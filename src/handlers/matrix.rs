@@ -150,6 +150,7 @@ pub async fn notify(
         cache::insert(&conn, &msg)?;
     }
 
+    let msg_id = msg.id.clone();
     state.topics.publish(&topic, Arc::new(msg));
 
     // iOS upstream poll-forward.
@@ -157,7 +158,7 @@ pub async fn notify(
         let state2 = state.clone();
         let topic2 = topic.clone();
         tokio::spawn(async move {
-            upstream::forward_poll(&state2.config, &topic2, &state2.http).await;
+            upstream::forward_poll(&state2.config, &topic2, &msg_id, &state2.http).await;
         });
     }
 

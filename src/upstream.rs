@@ -15,21 +15,31 @@ use sha2::{Digest, Sha256};
 
 /// Fire-and-forget: forward a poll request to the upstream server.
 /// Errors are logged and swallowed — upstream failure must never fail a publish.
-pub async fn forward_poll(config: &Config, topic: &str, client: &reqwest::Client) {
-    let base = match &config.upstream_base_url {
+///
+/// The upstream server (ntfy.sh) uses the `X-Poll-ID` header to tell the iOS
+/// app which message to fetch when APNs wakes it. The topic is hashed from its
+/// full URL (`base_url/topic`) so ntfy.sh never learns the actual topic name.
+pub async fn forward_poll(config: &Config, topic: &str, msg_id: &str, client: &reqwest::Client) {
+    let upstream = match &config.upstream_base_url {
         Some(b) => b.trim_end_matches('/').to_string(),
-        None => return, // upstream not configured
+        None => return,
     };
 
-    // Hash the topic so the upstream server never learns the actual topic name.
-    let topic_hash = sha256_hex(topic);
-    let url = format!("{base}/{topic_hash}");
+    let base = config.base_url.trim_end_matches('/');
+    if base.is_empty() {
+        tracing::warn!("upstream poll-forward skipped: base_url not configured");
+        return;
+    }
+
+    // Hash the full topic URL — matches ntfy Go's sha256.Sum256([]byte(topicURL)).
+    let topic_url = format!("{base}/{topic}");
+    let topic_hash = sha256_hex(&topic_url);
+    let url = format!("{upstream}/{topic_hash}");
 
     let mut req = client
-        .put(&url)
-        .header("Content-Type", "text/plain")
-        // Minimal body — upstream only needs to know a message arrived.
-        .body("New message");
+        .post(&url)
+        .header("X-Poll-ID", msg_id)
+        .body("");
 
     if let Some(token) = &config.upstream_access_token {
         req = req.bearer_auth(token);
@@ -41,9 +51,9 @@ pub async fn forward_poll(config: &Config, topic: &str, client: &reqwest::Client
         }
         Ok(resp) => {
             tracing::warn!(
-                topic = %topic,
+                topic    = %topic,
                 upstream = %url,
-                status = %resp.status(),
+                status   = %resp.status(),
                 "poll-forward non-2xx response"
             );
         }

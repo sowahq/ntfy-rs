@@ -116,8 +116,9 @@ pub async fn publish(
         if state.config.upstream_base_url.is_some() {
             let state2 = state.clone();
             let topic2 = topic.clone();
+            let msg_id2 = msg.id.clone();
             tokio::spawn(async move {
-                upstream::forward_poll(&state2.config, &topic2, &state2.http).await;
+                upstream::forward_poll(&state2.config, &topic2, &msg_id2, &state2.http).await;
             });
         }
     }

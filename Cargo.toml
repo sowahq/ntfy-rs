@@ -14,7 +14,7 @@ tokio = { version = "1", features = ["full"] }
 
 # HTTP server
 axum = { version = "0.7", features = ["ws"] }
-tower = { version = "0.4" }
+tower = { version = "0.4", features = ["util"] }
 tower-http = { version = "0.5", features = ["cors", "trace"] }
 
 # SQLite (statically linked — no system dep, no CGO equivalent)
@@ -55,6 +55,17 @@ toml = "0.8"
 futures-util = "0.3"
 tokio-stream = { version = "0.1", features = ["sync"] }
 base64 = "0.22.1"
+reqwest = { version = "0.13.3", features = ["json"] }
+sha2 = "0.11.0"
+
+# TLS
+axum-server = { version = "0.8", features = ["tls-rustls-no-provider"] }
+rustls = { version = "0.23", features = ["ring"] }
+rustls-pemfile = "2"
+
+# Unix socket serving (hyper is already a transitive dep via axum)
+hyper = { version = "1", features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
 
 [profile.release]
 opt-level = "z"      # optimise for size

@@ -48,6 +48,22 @@ pub struct Cli {
     /// Base URL of this server (e.g. https://ntfy.example.com)
     #[arg(long, env = "NTFY_BASE_URL")]
     pub base_url: Option<String>,
+
+    /// HTTPS listen address, e.g. ":443"
+    #[arg(long, env = "NTFY_LISTEN_HTTPS")]
+    pub listen_https: Option<String>,
+
+    /// Path to PEM TLS certificate file
+    #[arg(long, env = "NTFY_CERT_FILE")]
+    pub cert_file: Option<PathBuf>,
+
+    /// Path to PEM TLS private key file
+    #[arg(long, env = "NTFY_KEY_FILE")]
+    pub key_file: Option<PathBuf>,
+
+    /// Unix domain socket path
+    #[arg(long, env = "NTFY_LISTEN_UNIX")]
+    pub listen_unix: Option<PathBuf>,
 }
 
 /// File-based config (TOML). All fields are optional; defaults apply when absent.
@@ -67,6 +83,25 @@ pub struct FileConfig {
     /// When absent, auth is disabled and all requests are allowed.
     pub auth_file: Option<PathBuf>,
     pub default_access: Option<DefaultAccess>,
+
+    /// Upstream ntfy server for iOS poll-forward (e.g. "https://ntfy.sh").
+    /// When absent, upstream forwarding is disabled.
+    pub upstream_base_url: Option<String>,
+    /// Optional Bearer token for the upstream server.
+    pub upstream_access_token: Option<String>,
+
+    /// Maximum delay for scheduled messages (seconds). Default: 3 days.
+    pub max_delay_secs: Option<u64>,
+
+    /// HTTPS listen address (e.g. ":443"). Requires cert_file + key_file.
+    pub listen_https: Option<String>,
+    /// Path to PEM-encoded TLS certificate (or full chain).
+    pub cert_file: Option<PathBuf>,
+    /// Path to PEM-encoded TLS private key.
+    pub key_file: Option<PathBuf>,
+
+    /// Unix domain socket path. When set, the server also listens on this socket.
+    pub listen_unix: Option<PathBuf>,
 }
 
 /// Resolved, fully-populated config used at runtime.
@@ -88,6 +123,23 @@ pub struct Config {
     pub auth_enabled: bool,
     pub auth_file: Option<PathBuf>,
     pub default_access: DefaultAccess,
+
+    /// Upstream ntfy server for iOS poll-forward. None = disabled.
+    pub upstream_base_url: Option<String>,
+    pub upstream_access_token: Option<String>,
+
+    /// Maximum allowed delay for scheduled messages (seconds).
+    pub max_delay_secs: u64,
+
+    /// HTTPS listen address. None = TLS disabled.
+    pub listen_https: Option<String>,
+    /// PEM certificate file path.
+    pub cert_file: Option<PathBuf>,
+    /// PEM private key file path.
+    pub key_file: Option<PathBuf>,
+
+    /// Unix domain socket path. None = disabled.
+    pub listen_unix: Option<PathBuf>,
 }
 
 impl Config {
@@ -138,6 +190,13 @@ impl Config {
             auth_enabled,
             auth_file,
             default_access: file.default_access.unwrap_or_default(),
+            upstream_base_url: file.upstream_base_url,
+            upstream_access_token: file.upstream_access_token,
+            max_delay_secs: file.max_delay_secs.unwrap_or(3 * 24 * 60 * 60), // 3 days
+            listen_https: cli.listen_https.clone().or(file.listen_https),
+            cert_file: cli.cert_file.clone().or(file.cert_file),
+            key_file: cli.key_file.clone().or(file.key_file),
+            listen_unix: cli.listen_unix.clone().or(file.listen_unix),
         }
     }
 }

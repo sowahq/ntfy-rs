@@ -1,10 +1,12 @@
-use crate::{db::cache, state::AppState};
+use crate::{db::cache, state::AppState, upstream};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::time;
 
 /// Periodic background task that:
-/// 1. Deletes expired messages from the cache.
-/// 2. Prunes stale topics from the in-memory map.
+/// 1. Fires delayed messages whose delivery time has arrived.
+/// 2. Deletes expired messages from the cache.
+/// 3. Prunes stale topics from the in-memory map.
 pub async fn run(state: AppState) {
     let interval = Duration::from_secs(state.config.manager_interval_secs);
     let mut ticker = time::interval(interval);
@@ -15,13 +17,46 @@ pub async fn run(state: AppState) {
 
         let now = chrono::Utc::now().timestamp();
 
-        // Expire old messages.
         match state.db.get() {
-            Ok(conn) => match cache::delete_expired(&conn, now) {
-                Ok(n) if n > 0 => tracing::debug!(deleted = n, "expired messages pruned"),
-                Ok(_) => {}
-                Err(e) => tracing::warn!(error = %e, "failed to prune expired messages"),
-            },
+            Ok(conn) => {
+                // Fire delayed messages that are due.
+                match cache::due_messages(&conn, now) {
+                    Ok(due) if !due.is_empty() => {
+                        tracing::debug!(count = due.len(), "firing delayed messages");
+                        for msg in due {
+                            if let Err(e) = cache::mark_published(&conn, &msg.id) {
+                                tracing::warn!(id = %msg.id, error = %e, "failed to mark message published");
+                                continue;
+                            }
+                            let arc_msg = Arc::new(msg.clone());
+                            state.topics.publish(&msg.topic, arc_msg);
+
+                            // iOS upstream poll-forward for delayed messages.
+                            if state.config.upstream_base_url.is_some() {
+                                let state2 = state.clone();
+                                let topic2 = msg.topic.clone();
+                                tokio::spawn(async move {
+                                    upstream::forward_poll(
+                                        &state2.config,
+                                        &topic2,
+                                        &state2.http,
+                                    )
+                                    .await;
+                                });
+                            }
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(e) => tracing::warn!(error = %e, "failed to query due messages"),
+                }
+
+                // Expire old messages.
+                match cache::delete_expired(&conn, now) {
+                    Ok(n) if n > 0 => tracing::debug!(deleted = n, "expired messages pruned"),
+                    Ok(_) => {}
+                    Err(e) => tracing::warn!(error = %e, "failed to prune expired messages"),
+                }
+            }
             Err(e) => tracing::warn!(error = %e, "failed to get db connection for manager"),
         }
 
@@ -32,8 +67,8 @@ pub async fn run(state: AppState) {
         }
 
         tracing::debug!(
-            topics   = state.topics.topic_count(),
-            subs     = state.topics.subscriber_count(),
+            topics = state.topics.topic_count(),
+            subs   = state.topics.subscriber_count(),
             "manager tick"
         );
     }

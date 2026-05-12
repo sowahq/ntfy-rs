@@ -1,7 +1,7 @@
 use crate::message::Message;
 use rusqlite::{params, Connection, Result};
 
-/// Persist a message to the cache.
+/// Persist a message to the cache with immediate delivery (published=1).
 pub fn insert(conn: &Connection, msg: &Message) -> Result<()> {
     let tags = serde_json::to_string(&msg.tags).unwrap_or_else(|_| "[]".into());
     let actions = serde_json::to_string(&msg.actions).unwrap_or_else(|_| "[]".into());
@@ -29,6 +29,60 @@ pub fn insert(conn: &Connection, msg: &Message) -> Result<()> {
             msg.content_type,
             msg.encoding,
         ],
+    )?;
+    Ok(())
+}
+
+/// Persist a delayed message (published=0). `msg.time` holds the delivery timestamp.
+pub fn insert_delayed(conn: &Connection, msg: &Message) -> Result<()> {
+    let tags = serde_json::to_string(&msg.tags).unwrap_or_else(|_| "[]".into());
+    let actions = serde_json::to_string(&msg.actions).unwrap_or_else(|_| "[]".into());
+    let expires = msg.expires.unwrap_or(0);
+    let sequence_id = msg.sequence_id.as_deref().unwrap_or(&msg.id);
+
+    conn.execute(
+        "INSERT INTO messages
+            (id, sequence_id, time, expires, topic, message, title, priority,
+             tags, click, icon, actions, content_type, encoding, published)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,0)",
+        params![
+            msg.id,
+            sequence_id,
+            msg.time,
+            expires,
+            msg.topic,
+            msg.message,
+            msg.title,
+            msg.priority,
+            tags,
+            msg.click,
+            msg.icon,
+            actions,
+            msg.content_type,
+            msg.encoding,
+        ],
+    )?;
+    Ok(())
+}
+
+/// Return all delayed messages whose delivery time has arrived (`time <= now`).
+pub fn due_messages(conn: &Connection, now: i64) -> Result<Vec<Message>> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT id, sequence_id, time, expires, topic, message, title, priority,
+                tags, click, icon, actions, content_type, encoding
+         FROM messages
+         WHERE published = 0 AND time <= ?1
+         ORDER BY time ASC",
+    )?;
+    let rows = stmt.query_map(params![now], row_to_message)?;
+    rows.collect()
+}
+
+/// Mark a delayed message as published so it appears in subscriber queries.
+pub fn mark_published(conn: &Connection, id: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE messages SET published = 1 WHERE id = ?1",
+        params![id],
     )?;
     Ok(())
 }

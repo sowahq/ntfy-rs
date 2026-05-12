@@ -20,19 +20,44 @@ No CGO, no system SQLite dependency, no Firebase requirement. Single static bina
 
 ## Build
 
+### Linux / macOS
+
 ```bash
 cargo build --release
 # output: target/release/ntfy-rs
 ```
 
-**Windows cross-compilation** (from Linux):
+### Windows (native)
+
+1. Install Rust from [rustup.rs](https://rustup.rs). Accept the defaults.
+
+2. Install the C++ build tools — required to compile the bundled SQLite:
+   - Download [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
+   - Select the **"Desktop development with C++"** workload and install
+
+3. Open a new terminal (PowerShell or Command Prompt) and build:
+
+```powershell
+cargo build --release
+# output: target\release\ntfy-rs.exe
+```
+
+The first build takes a few minutes (SQLite is compiled from source). Subsequent builds are fast.
+
+> **Troubleshooting**
+> - `linker 'link.exe' not found` — the C++ build tools are not on your PATH. Re-open the terminal after installing them, or use the "x64 Native Tools Command Prompt" shortcut installed with Visual Studio.
+> - `cargo not found` — close and reopen the terminal after installing rustup; it modifies `PATH` but the current session won't see the change.
+
+> **Note:** the Unix domain socket listener is disabled on Windows (`listen_unix` has no effect). All other features work normally.
+
+### Cross-compiling Windows binary from Linux
 
 ```bash
 # With cross (requires Docker)
 cargo install cross
 cross build --release --target x86_64-pc-windows-gnu
 
-# With MinGW
+# With MinGW (no Docker)
 sudo apt install gcc-mingw-w64-x86-64
 rustup target add x86_64-pc-windows-gnu
 CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc \

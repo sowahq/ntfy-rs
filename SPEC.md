@@ -483,5 +483,5 @@ All message events share this structure. Fields with zero/empty values are omitt
 - Certificate hot-reload not supported; restart required for new TLS cert.
 - `?scheduled=1` subscribe param (show pending delayed messages) not implemented.
 - First admin user requires direct DB access to set `role='admin'`.
-- Unix socket listener is Linux/macOS only (`#[cfg(unix)]`).
+- Unix socket listener is Linux/macOS only; `listen_unix` has no effect on Windows.
 - PostgreSQL not supported; SQLite only.

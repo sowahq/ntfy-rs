@@ -8,11 +8,12 @@ use crate::{
 };
 use axum::{
     body::Bytes,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
     Extension, Json,
 };
+use std::collections::HashMap;
 use std::sync::Arc;
 
 /// PUT/POST /{topic}
@@ -20,6 +21,7 @@ pub async fn publish(
     State(state): State<AppState>,
     Path(topic): Path<String>,
     Extension(auth_user): Extension<AuthUser>,
+    Query(params): Query<HashMap<String, String>>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<impl IntoResponse, AppError> {
@@ -48,38 +50,38 @@ pub async fn publish(
     let body_str = String::from_utf8_lossy(&body).into_owned();
     let mut msg = Message::new_message(&topic, body_str);
 
-    // ── parse metadata headers ────────────────────────────────────────────
-    if let Some(v) = header_val(&headers, &["x-title", "title", "t"]) {
+    // ── parse metadata headers + query params ────────────────────────────
+    // Each field is read from headers first, falling back to query params —
+    // matching ntfy's readParam() behaviour so clients can use either form.
+    if let Some(v) = param(&headers, &params, &["x-title", "title", "t"]) {
         msg.title = v;
     }
-    if let Some(v) = header_val(&headers, &["x-priority", "priority", "prio", "p"]) {
+    if let Some(v) = param(&headers, &params, &["x-priority", "priority", "prio", "p"]) {
         msg.priority = parse_priority(&v);
     }
-    if let Some(v) = header_val(&headers, &["x-tags", "tags", "tag", "ta"]) {
+    if let Some(v) = param(&headers, &params, &["x-tags", "tags", "tag", "ta"]) {
         msg.tags = v.split(',').map(|s| s.trim().to_string()).collect();
     }
-    if let Some(v) = header_val(&headers, &["x-click", "click"]) {
+    if let Some(v) = param(&headers, &params, &["x-click", "click"]) {
         msg.click = v;
     }
-    if let Some(v) = header_val(&headers, &["x-icon", "icon"]) {
+    if let Some(v) = param(&headers, &params, &["x-icon", "icon"]) {
         msg.icon = v;
     }
-    if let Some(v) = header_val(&headers, &["x-markdown", "markdown", "md"]) {
+    if let Some(v) = param(&headers, &params, &["x-markdown", "markdown", "md"]) {
         if is_truthy(&v) {
             msg.content_type = "text/markdown".to_string();
         }
     }
-    if let Some(v) = header_val(&headers, &["content-type"]) {
+    if let Some(v) = param(&headers, &params, &["content-type", "content_type"]) {
         if v.to_lowercase().contains("text/markdown") {
             msg.content_type = "text/markdown".to_string();
         }
     }
 
-    // ── parse delay headers (X-Delay / X-At / X-In) ──────────────────────
-    // Returns Some(unix_timestamp) when the message should be delivered later,
-    // or None for immediate delivery.
+    // ── parse delay (X-Delay / X-At / X-In, header or query param) ───────
     let deliver_at: Option<i64> =
-        if let Some(v) = header_val(&headers, &["x-delay", "delay", "x-at", "at", "x-in", "in"]) {
+        if let Some(v) = param(&headers, &params, &["x-delay", "delay", "x-at", "at", "x-in", "in"]) {
             parse_delay(&v, state.config.max_delay_secs)
                 .map_err(|_| AppError::BadRequest("invalid delay value".into()))?
         } else {
@@ -131,6 +133,7 @@ pub async fn publish_multi(
     State(state): State<AppState>,
     Path(topics_raw): Path<String>,
     Extension(auth_user): Extension<AuthUser>,
+    Query(params): Query<HashMap<String, String>>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<impl IntoResponse, AppError> {
@@ -140,6 +143,7 @@ pub async fn publish_multi(
             State(state.clone()),
             Path(topic.clone()),
             Extension(auth_user.clone()),
+            Query(params.clone()),
             headers.clone(),
             body.clone(),
         )
@@ -150,7 +154,9 @@ pub async fn publish_multi(
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-fn header_val(headers: &HeaderMap, names: &[&str]) -> Option<String> {
+/// Read a parameter from headers first, then query string — matching ntfy's readParam().
+fn param(headers: &HeaderMap, query: &HashMap<String, String>, names: &[&str]) -> Option<String> {
+    // Headers take priority.
     for name in names {
         if let Some(v) = headers.get(*name) {
             if let Ok(s) = v.to_str() {
@@ -158,6 +164,16 @@ fn header_val(headers: &HeaderMap, names: &[&str]) -> Option<String> {
                 if !s.is_empty() {
                     return Some(s);
                 }
+            }
+        }
+    }
+    // Fall back to query string (lowercase keys).
+    for name in names {
+        let key = name.to_lowercase();
+        if let Some(v) = query.get(&key) {
+            let v = v.trim().to_string();
+            if !v.is_empty() {
+                return Some(v);
             }
         }
     }

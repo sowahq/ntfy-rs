@@ -117,7 +117,10 @@ pub fn since_id(conn: &Connection, topic: &str, anchor_id: &str) -> Result<Vec<M
 
     let since = match anchor_time {
         Some(t) => t,
-        None => return Ok(vec![]), // anchor expired or unknown — nothing new to deliver
+        // Anchor not found: expired or DB was wiped. Return messages from the
+        // last 10 seconds so a fresh publish is visible, but don't flood the
+        // client with old history.
+        None => chrono::Utc::now().timestamp() - 10,
     };
 
     let mut stmt = conn.prepare_cached(

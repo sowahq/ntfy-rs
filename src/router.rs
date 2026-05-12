@@ -22,6 +22,8 @@ pub fn build(state: AppState) -> Router {
         .route("/:topics/json", get(subscribe::subscribe_ndjson))
         .route("/:topics/sse",  get(subscribe::subscribe_sse))
         .route("/:topics/ws",   get(ws::subscribe_ws))
+        // ── client auth check ─────────────────────────────────────────────
+        .route("/:topic/auth",  get(health::topic_auth))
         // ── self-service account ──────────────────────────────────────────
         .route("/v1/account",                    get(account::get_account).delete(account::delete_account))
         .route("/v1/account/password",           put(account::change_password))

@@ -1,5 +1,5 @@
-use crate::{db::cache, error::AppError, state::AppState};
-use axum::{extract::State, Json};
+use crate::{auth::AuthUser, db::cache, error::AppError, state::AppState};
+use axum::{extract::State, response::IntoResponse, Extension, Json};
 use serde_json::{json, Value};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -7,6 +7,39 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// GET /v1/health
 pub async fn health() -> Json<Value> {
     Json(json!({ "healthy": true }))
+}
+
+/// GET /{topic}/auth — ntfy client auth check.
+///
+/// The ntfy iOS and Android apps hit this before subscribing to verify
+/// credentials. Return 200 when auth is disabled or the caller is authenticated,
+/// 401 when auth is enabled and no/invalid credentials were supplied.
+pub async fn topic_auth(
+    State(state): State<AppState>,
+    Extension(auth_user): Extension<AuthUser>,
+) -> impl IntoResponse {
+    use crate::auth::{authorize, Permission};
+    use axum::http::StatusCode;
+
+    // Re-use the topic path parameter isn't needed here — the app only checks
+    // whether the server accepts the credentials at all, not per-topic access.
+    // A 200 means "credentials OK (or auth disabled)", 401 means "try again with creds".
+    if !state.config.auth_enabled {
+        return StatusCode::OK;
+    }
+    // Auth is enabled — check if the caller authenticated successfully.
+    // We do a dummy authorize against a placeholder topic; if they're logged in
+    // at all (or default_access allows it) we return 200.
+    match authorize(
+        state.effective_auth_db(),
+        &state.config,
+        &auth_user,
+        "auth",
+        Permission::Read,
+    ) {
+        Ok(_) => StatusCode::OK,
+        Err(_) => StatusCode::UNAUTHORIZED,
+    }
 }
 
 /// GET /v1/version

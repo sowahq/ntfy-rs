@@ -64,6 +64,14 @@ pub struct Cli {
     /// Unix domain socket path
     #[arg(long, env = "NTFY_LISTEN_UNIX")]
     pub listen_unix: Option<PathBuf>,
+
+    /// Upstream ntfy server for iOS poll-forward (e.g. https://ntfy.sh)
+    #[arg(long, env = "NTFY_UPSTREAM_BASE_URL")]
+    pub upstream_base_url: Option<String>,
+
+    /// Bearer token for the upstream server
+    #[arg(long, env = "NTFY_UPSTREAM_ACCESS_TOKEN")]
+    pub upstream_access_token: Option<String>,
 }
 
 /// File-based config (TOML). All fields are optional; defaults apply when absent.
@@ -190,8 +198,8 @@ impl Config {
             auth_enabled,
             auth_file,
             default_access: file.default_access.unwrap_or_default(),
-            upstream_base_url: file.upstream_base_url,
-            upstream_access_token: file.upstream_access_token,
+            upstream_base_url: cli.upstream_base_url.clone().or(file.upstream_base_url),
+            upstream_access_token: cli.upstream_access_token.clone().or(file.upstream_access_token),
             max_delay_secs: file.max_delay_secs.unwrap_or(3 * 24 * 60 * 60), // 3 days
             listen_https: cli.listen_https.clone().or(file.listen_https),
             cert_file: cli.cert_file.clone().or(file.cert_file),

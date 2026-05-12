@@ -17,7 +17,7 @@ use crate::{
     error::AppError,
 };
 use axum::{
-    extract::{Request, State},
+    extract::Request,
     middleware::Next,
     response::Response,
 };
@@ -33,6 +33,7 @@ pub enum Role {
 }
 
 impl Role {
+    #[allow(dead_code)]
     pub fn as_str(&self) -> &'static str {
         match self {
             Role::Admin => "admin",
@@ -62,6 +63,7 @@ pub enum Permission {
 #[derive(Debug, Clone)]
 pub struct User {
     pub id: String,
+    #[allow(dead_code)]
     pub username: String,
     pub hash: String,
     pub role: Role,
@@ -98,37 +100,45 @@ impl AuthUser {
 
 // ── axum middleware ───────────────────────────────────────────────────────────
 
-/// Axum middleware that resolves the caller's identity from the Authorization
-/// header (or `?auth=` query param) and stores an `AuthUser` in request
-/// extensions. Always succeeds — auth failures produce an anonymous user so
-/// that rate limiting still applies.
-pub async fn auth_middleware(
-    State((db, config)): State<(DbPool, Arc<Config>)>,
-    mut req: Request,
-    next: Next,
-) -> Response {
-    let ip = extract_ip(&req);
-    let auth_user = resolve_auth(&db, &config, &req, ip).await;
-    req.extensions_mut().insert(auth_user);
-    next.run(req).await
+/// Return a tower Layer that injects `AuthUser` into request extensions.
+/// Captures db and config by value; no axum State extraction needed.
+pub fn make_auth_layer(db: DbPool, config: Arc<Config>) -> impl tower::Layer<
+    axum::routing::Route,
+    Service = impl tower::Service<
+        Request,
+        Response = Response,
+        Error = std::convert::Infallible,
+        Future = impl std::future::Future<Output = Result<Response, std::convert::Infallible>> + Send,
+    > + Clone + Send + 'static,
+> + Clone + 'static {
+    axum::middleware::from_fn(move |mut req: Request, next: Next| {
+        let db = db.clone();
+        let config = Arc::clone(&config);
+        async move {
+            // Extract everything we need from req before any await point
+            // so the &Request borrow doesn't cross an await boundary.
+            let ip = extract_ip(&req);
+            let auth_header = read_auth_header(&req);
+            let auth_user = resolve_auth_parts(&db, &config, auth_header, ip).await;
+            req.extensions_mut().insert(auth_user);
+            next.run(req).await
+        }
+    })
 }
 
-async fn resolve_auth(
+async fn resolve_auth_parts(
     db: &DbPool,
     config: &Config,
-    req: &Request,
+    auth_header: Option<String>,
     ip: IpAddr,
 ) -> AuthUser {
-    // Auth is only active when auth is enabled in config.
     if !config.auth_enabled {
         return AuthUser::anonymous(ip);
     }
-
-    let header = match read_auth_header(req) {
+    let header = match auth_header {
         Some(h) => h,
         None => return AuthUser::anonymous(ip),
     };
-
     match authenticate(db, &header).await {
         Ok(user) => AuthUser::authenticated(user, ip),
         Err(_) => AuthUser::anonymous(ip),

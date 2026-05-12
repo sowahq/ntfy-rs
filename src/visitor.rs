@@ -21,6 +21,7 @@ pub struct Visitor {
     pub request_limiter: Arc<Limiter>,
     /// Tracks active subscription count (simple atomic counter).
     pub subscription_count: std::sync::atomic::AtomicU32,
+    #[allow(dead_code)]
     pub last_seen: Instant,
 }
 
@@ -44,6 +45,7 @@ impl Visitor {
         self.request_limiter.check().is_ok()
     }
 
+    #[allow(dead_code)]
     pub fn subscription_count(&self) -> u32 {
         self.subscription_count
             .load(std::sync::atomic::Ordering::Relaxed)
@@ -61,6 +63,7 @@ impl Visitor {
 
     /// A visitor is stale when it has had no activity for 30 minutes and
     /// holds no active subscriptions.
+    #[allow(dead_code)]
     pub fn is_stale(&self) -> bool {
         self.subscription_count() == 0
             && self.last_seen.elapsed() > Duration::from_secs(30 * 60)
@@ -94,6 +97,7 @@ impl VisitorMap {
     }
 
     /// Remove visitors that have been idle and hold no subscriptions.
+    #[allow(dead_code)]
     pub fn prune_stale(&self) -> usize {
         let stale: Vec<IpAddr> = self
             .inner
@@ -108,6 +112,7 @@ impl VisitorMap {
         n
     }
 
+    #[allow(dead_code)]
     pub fn visitor_count(&self) -> usize {
         self.inner.len()
     }

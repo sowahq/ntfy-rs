@@ -54,6 +54,7 @@ anyhow = "1"
 toml = "0.8"
 futures-util = "0.3"
 tokio-stream = { version = "0.1", features = ["sync"] }
+base64 = "0.22.1"
 
 [profile.release]
 opt-level = "z"      # optimise for size

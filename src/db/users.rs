@@ -32,6 +32,7 @@ pub fn user_by_token(conn: &Connection, token: &str) -> Result<Option<User>> {
 }
 
 /// Insert a new user. `hash` must already be a bcrypt hash.
+#[allow(dead_code)]
 pub fn insert_user(conn: &Connection, id: &str, username: &str, hash: &str, role: Role) -> Result<()> {
     conn.execute(
         "INSERT INTO users (id, username, hash, role) VALUES (?1, ?2, ?3, ?4)",
@@ -41,6 +42,7 @@ pub fn insert_user(conn: &Connection, id: &str, username: &str, hash: &str, role
 }
 
 /// Update the bcrypt hash for a user (password change).
+#[allow(dead_code)]
 pub fn update_password(conn: &Connection, user_id: &str, hash: &str) -> Result<()> {
     conn.execute(
         "UPDATE users SET hash = ?1 WHERE id = ?2",
@@ -50,6 +52,7 @@ pub fn update_password(conn: &Connection, user_id: &str, hash: &str) -> Result<(
 }
 
 /// Soft-delete a user (sets deleted = 1). Tokens are cascade-deleted by FK.
+#[allow(dead_code)]
 pub fn delete_user(conn: &Connection, user_id: &str) -> Result<()> {
     conn.execute(
         "UPDATE users SET deleted = 1 WHERE id = ?1",
@@ -61,6 +64,7 @@ pub fn delete_user(conn: &Connection, user_id: &str) -> Result<()> {
 // ── tokens ────────────────────────────────────────────────────────────────────
 
 /// Insert a new token for a user.
+#[allow(dead_code)]
 pub fn insert_token(
     conn: &Connection,
     token: &str,
@@ -76,6 +80,7 @@ pub fn insert_token(
 }
 
 /// Delete a specific token.
+#[allow(dead_code)]
 pub fn delete_token(conn: &Connection, token: &str, user_id: &str) -> Result<()> {
     conn.execute(
         "DELETE FROM tokens WHERE token = ?1 AND user_id = ?2",
@@ -85,6 +90,7 @@ pub fn delete_token(conn: &Connection, token: &str, user_id: &str) -> Result<()>
 }
 
 /// Update last_access and last_origin for a token (fire-and-forget on auth).
+#[allow(dead_code)]
 pub fn touch_token(conn: &Connection, token: &str, origin: &str) -> Result<()> {
     let now = chrono::Utc::now().timestamp();
     conn.execute(
@@ -118,6 +124,7 @@ pub fn acl_allowed(
 }
 
 /// Upsert an ACL row for (user_id, topic).
+#[allow(dead_code)]
 pub fn acl_set(
     conn: &Connection,
     user_id: &str,
@@ -135,6 +142,7 @@ pub fn acl_set(
 }
 
 /// Remove an ACL row.
+#[allow(dead_code)]
 pub fn acl_delete(conn: &Connection, user_id: &str, topic: &str) -> Result<()> {
     conn.execute(
         "DELETE FROM topic_acl WHERE user_id = ?1 AND topic = ?2",

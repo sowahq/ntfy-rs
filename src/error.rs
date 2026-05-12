@@ -24,6 +24,12 @@ pub enum AppError {
     #[error("too many requests")]
     TooManyRequests,
 
+    #[error("unauthorized")]
+    Unauthorized,
+
+    #[error("forbidden")]
+    Forbidden,
+
     #[error("internal error: {0}")]
     Internal(String),
 }
@@ -36,6 +42,8 @@ impl AppError {
             AppError::TopicInvalid => StatusCode::BAD_REQUEST,
             AppError::MessageTooLarge => StatusCode::PAYLOAD_TOO_LARGE,
             AppError::TooManyRequests => StatusCode::TOO_MANY_REQUESTS,
+            AppError::Unauthorized => StatusCode::UNAUTHORIZED,
+            AppError::Forbidden => StatusCode::FORBIDDEN,
             AppError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -47,6 +55,8 @@ impl AppError {
             AppError::TopicInvalid => 40002,
             AppError::MessageTooLarge => 41301,
             AppError::TooManyRequests => 42901,
+            AppError::Unauthorized => 40101,
+            AppError::Forbidden => 40301,
             AppError::Internal(_) => 50001,
         }
     }

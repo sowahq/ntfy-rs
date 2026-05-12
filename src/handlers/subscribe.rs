@@ -6,10 +6,11 @@ use crate::{
     state::AppState,
 };
 use axum::{
+    body::Body,
     extract::{Path, Query, State},
     response::{
         sse::{Event, KeepAlive, Sse},
-        IntoResponse,
+        IntoResponse, Response,
     },
     Extension,
 };
@@ -33,14 +34,14 @@ pub struct SubscribeParams {
 }
 
 impl SubscribeParams {
-    fn is_poll(&self) -> bool {
+    pub fn is_poll(&self) -> bool {
         self.poll
             .as_deref()
             .map(|v| matches!(v, "1" | "true" | "yes"))
             .unwrap_or(false)
     }
 
-    fn since_time(&self) -> i64 {
+    pub fn since_time(&self) -> i64 {
         match self.since.as_deref() {
             Some("all") => 0,
             Some(s) => s.parse::<i64>().unwrap_or(0),
@@ -55,14 +56,20 @@ impl SubscribeParams {
     }
 }
 
-// ── SSE subscribe: GET /{topic}/json ─────────────────────────────────────────
+// ── SSE subscribe: GET /{topics}/sse ─────────────────────────────────────────
 
 pub async fn subscribe_sse(
     State(state): State<AppState>,
-    Path(topic): Path<String>,
+    Path(topics_raw): Path<String>,
     Query(params): Query<SubscribeParams>,
     Extension(auth_user): Extension<AuthUser>,
-) -> Result<impl IntoResponse, AppError> {
+) -> Result<Response, AppError> {
+    if topics_raw.contains(',') {
+        return subscribe_multi_sse(
+            State(state), Path(topics_raw), Query(params), Extension(auth_user),
+        ).await;
+    }
+    let topic = topics_raw;
     if !valid_topic(&topic) {
         return Err(AppError::TopicInvalid);
     }
@@ -164,35 +171,338 @@ fn build_sse_stream(
         .chain(guard_stream)
 }
 
-/// RAII guard that decrements the visitor's subscription count on drop.
-struct SubscriptionGuard(Arc<crate::visitor::Visitor>);
+use crate::visitor::SubscriptionGuard;
 
-impl Drop for SubscriptionGuard {
-    fn drop(&mut self) {
-        self.0.decrement_subscriptions();
-    }
-}
+// ── NDJSON: GET /{topics}/json (raw newline-delimited, no SSE framing) ────────
+//
+// ntfy clients use this as the primary streaming format. Each line is a
+// complete JSON object followed by '\n'. No "data:" prefix.
+// Handles both single topic and comma-separated multi-topic.
 
-// ── Stubs for Phase 4 ─────────────────────────────────────────────────────────
-
-#[allow(dead_code)]
-pub async fn subscribe_json(
+pub async fn subscribe_ndjson(
     State(state): State<AppState>,
-    Path(topic): Path<String>,
+    Path(topics_raw): Path<String>,
     Query(params): Query<SubscribeParams>,
     Extension(auth_user): Extension<AuthUser>,
-) -> Result<impl IntoResponse, AppError> {
-    subscribe_sse(State(state), Path(topic), Query(params), Extension(auth_user)).await
+) -> Result<Response, AppError> {
+    if topics_raw.contains(',') {
+        return subscribe_multi_ndjson(
+            State(state), Path(topics_raw), Query(params), Extension(auth_user),
+        ).await;
+    }
+    let topic = topics_raw;
+    if !valid_topic(&topic) {
+        return Err(AppError::TopicInvalid);
+    }
+
+    let visitor = state.visitors.get_or_create(auth_user.ip);
+    if !visitor.request_allowed() {
+        return Err(AppError::TooManyRequests);
+    }
+
+    authorize(
+        state.effective_auth_db(),
+        &state.config,
+        &auth_user,
+        &topic,
+        Permission::Read,
+    )?;
+
+    let since = params.since_time();
+    let cached = {
+        let conn = state.db.get()?;
+        cache::since_time(&conn, &topic, since)?
+    };
+
+    if params.is_poll() {
+        // Poll: return cached messages and close.
+        let body = cached
+            .iter()
+            .filter_map(|m| {
+                let mut line = serde_json::to_string(m).ok()?;
+                line.push('\n');
+                Some(line)
+            })
+            .collect::<String>();
+        return Ok(Response::builder()
+            .header("Content-Type", "application/x-ndjson")
+            .body(Body::from(body))
+            .unwrap());
+    }
+
+    // Streaming: open event + cached + live.
+    let t = state.topics.get_or_create(&topic);
+    let rx = t.tx.subscribe();
+    visitor.increment_subscriptions();
+
+    let visitor_clone = Arc::clone(&visitor);
+    let stream = build_ndjson_stream(topic.clone(), cached, rx, visitor_clone);
+
+    Ok(Response::builder()
+        .header("Content-Type", "application/x-ndjson")
+        .header("Transfer-Encoding", "chunked")
+        .header("X-Accel-Buffering", "no") // disable nginx buffering
+        .body(Body::from_stream(stream))
+        .unwrap())
 }
 
-#[allow(dead_code)]
+fn build_ndjson_stream(
+    topic: String,
+    cached: Vec<Message>,
+    rx: broadcast::Receiver<Arc<Message>>,
+    visitor: Arc<crate::visitor::Visitor>,
+) -> impl Stream<Item = Result<String, std::convert::Infallible>> {
+    let open_msg = Message::new_open(&topic);
+    let open = stream::once(async move {
+        let mut s = serde_json::to_string(&open_msg).unwrap_or_default();
+        s.push('\n');
+        Ok::<String, Infallible>(s)
+    });
+
+    let cached_stream = stream::iter(cached.into_iter().filter_map(|m| {
+        let mut s = serde_json::to_string(&m).ok()?;
+        s.push('\n');
+        Some(Ok::<String, Infallible>(s))
+    }));
+
+    let live_stream = BroadcastStream::new(rx).filter_map(|result| async move {
+        match result {
+            Ok(msg) => {
+                let mut s = serde_json::to_string(&*msg).ok()?;
+                s.push('\n');
+                Some(Ok::<String, Infallible>(s))
+            }
+            Err(tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(n)) => {
+                tracing::warn!(skipped = n, "ndjson subscriber lagged");
+                None
+            }
+        }
+    });
+
+    let guard_stream = stream::once(async move {
+        let _guard = SubscriptionGuard(visitor);
+        futures_util::future::pending::<Option<Result<String, Infallible>>>().await
+    })
+    .filter_map(|x| async move { x });
+
+    open.chain(cached_stream).chain(live_stream).chain(guard_stream)
+}
+
+// ── Multi-topic SSE: GET /{topic1},{topic2}/sse ───────────────────────────────
+
 pub async fn subscribe_multi_sse(
     State(state): State<AppState>,
     Path(topics_raw): Path<String>,
     Query(params): Query<SubscribeParams>,
     Extension(auth_user): Extension<AuthUser>,
-) -> Result<impl IntoResponse, AppError> {
+) -> Result<Response, AppError> {
     let topics = parse_topics(&topics_raw).ok_or(AppError::TopicInvalid)?;
-    let topic = topics.into_iter().next().ok_or(AppError::TopicInvalid)?;
-    subscribe_sse(State(state), Path(topic), Query(params), Extension(auth_user)).await
+
+    let visitor = state.visitors.get_or_create(auth_user.ip);
+    if !visitor.request_allowed() {
+        return Err(AppError::TooManyRequests);
+    }
+
+    for topic in &topics {
+        authorize(
+            state.effective_auth_db(),
+            &state.config,
+            &auth_user,
+            topic,
+            Permission::Read,
+        )?;
+    }
+
+    let since = params.since_time();
+    let mut cached: Vec<Message> = Vec::new();
+    let mut receivers: Vec<broadcast::Receiver<Arc<Message>>> = Vec::new();
+
+    for topic in &topics {
+        let mut msgs = {
+            let conn = state.db.get()?;
+            cache::since_time(&conn, topic, since)?
+        };
+        cached.append(&mut msgs);
+        let t = state.topics.get_or_create(topic);
+        receivers.push(t.tx.subscribe());
+    }
+
+    cached.sort_by_key(|m| m.time);
+    visitor.increment_subscriptions();
+
+    let first_topic = topics[0].clone();
+    let keepalive_secs = state.config.keepalive_secs;
+    let visitor_clone = Arc::clone(&visitor);
+
+    let stream = build_multi_sse_stream(first_topic, cached, receivers, visitor_clone);
+
+    Ok(Sse::new(stream)
+        .keep_alive(
+            KeepAlive::new()
+                .interval(Duration::from_secs(keepalive_secs))
+                .text("keepalive"),
+        )
+        .into_response())
+}
+
+fn build_multi_sse_stream(
+    first_topic: String,
+    cached: Vec<Message>,
+    receivers: Vec<broadcast::Receiver<Arc<Message>>>,
+    visitor: Arc<crate::visitor::Visitor>,
+) -> impl Stream<Item = Result<Event, Infallible>> {
+    let open_msg = Message::new_open(&first_topic);
+    let open_event = stream::once(async move {
+        let data = serde_json::to_string(&open_msg).unwrap_or_default();
+        Ok::<Event, Infallible>(Event::default().data(data))
+    });
+
+    let cached_stream = stream::iter(cached.into_iter().map(|m| {
+        let data = serde_json::to_string(&m).unwrap_or_default();
+        Ok::<Event, Infallible>(Event::default().data(data))
+    }));
+
+    // Merge all broadcast receivers into one stream.
+    let boxed: Vec<_> = receivers
+        .into_iter()
+        .map(|rx| {
+            Box::pin(BroadcastStream::new(rx).filter_map(
+                |result| async move {
+                    match result {
+                        Ok(msg) => {
+                            let data = serde_json::to_string(&*msg).unwrap_or_default();
+                            Some(Ok::<Event, Infallible>(Event::default().data(data)))
+                        }
+                        Err(tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(n)) => {
+                            tracing::warn!(skipped = n, "multi-sse subscriber lagged");
+                            None
+                        }
+                    }
+                },
+            ))
+        })
+        .collect();
+    let live_stream = futures_util::stream::select_all(boxed);
+
+    let guard_stream = stream::once(async move {
+        let _guard = SubscriptionGuard(visitor);
+        futures_util::future::pending::<Option<Result<Event, Infallible>>>().await
+    })
+    .filter_map(|x| async move { x });
+
+    open_event
+        .chain(cached_stream)
+        .chain(live_stream)
+        .chain(guard_stream)
+}
+
+// ── Multi-topic NDJSON: GET /{topic1},{topic2}/json ───────────────────────────
+
+pub async fn subscribe_multi_ndjson(
+    State(state): State<AppState>,
+    Path(topics_raw): Path<String>,
+    Query(params): Query<SubscribeParams>,
+    Extension(auth_user): Extension<AuthUser>,
+) -> Result<Response, AppError> {
+    let topics = parse_topics(&topics_raw).ok_or(AppError::TopicInvalid)?;
+
+    let visitor = state.visitors.get_or_create(auth_user.ip);
+    if !visitor.request_allowed() {
+        return Err(AppError::TooManyRequests);
+    }
+
+    for topic in &topics {
+        authorize(
+            state.effective_auth_db(),
+            &state.config,
+            &auth_user,
+            topic,
+            Permission::Read,
+        )?;
+    }
+
+    let since = params.since_time();
+    let mut cached: Vec<Message> = Vec::new();
+    let mut receivers: Vec<broadcast::Receiver<Arc<Message>>> = Vec::new();
+
+    for topic in &topics {
+        let mut msgs = {
+            let conn = state.db.get()?;
+            cache::since_time(&conn, topic, since)?
+        };
+        cached.append(&mut msgs);
+        let t = state.topics.get_or_create(topic);
+        receivers.push(t.tx.subscribe());
+    }
+
+    cached.sort_by_key(|m| m.time);
+
+    if params.is_poll() {
+        let body = cached
+            .iter()
+            .filter_map(|m| {
+                let mut line = serde_json::to_string(m).ok()?;
+                line.push('\n');
+                Some(line)
+            })
+            .collect::<String>();
+        return Ok(Response::builder()
+            .header("Content-Type", "application/x-ndjson")
+            .body(Body::from(body))
+            .unwrap());
+    }
+
+    visitor.increment_subscriptions();
+    let first_topic = topics[0].clone();
+    let visitor_clone = Arc::clone(&visitor);
+
+    let open_msg = Message::new_open(&first_topic);
+    let open = stream::once(async move {
+        let mut s = serde_json::to_string(&open_msg).unwrap_or_default();
+        s.push('\n');
+        Ok::<String, Infallible>(s)
+    });
+
+    let cached_stream = stream::iter(cached.into_iter().filter_map(|m| {
+        let mut s = serde_json::to_string(&m).ok()?;
+        s.push('\n');
+        Some(Ok::<String, Infallible>(s))
+    }));
+
+    let boxed: Vec<_> = receivers
+        .into_iter()
+        .map(|rx| {
+            Box::pin(BroadcastStream::new(rx).filter_map(
+                |result| async move {
+                    match result {
+                        Ok(msg) => {
+                            let mut s = serde_json::to_string(&*msg).ok()?;
+                            s.push('\n');
+                            Some(Ok::<String, Infallible>(s))
+                        }
+                        Err(tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(n)) => {
+                            tracing::warn!(skipped = n, "multi-ndjson subscriber lagged");
+                            None
+                        }
+                    }
+                },
+            ))
+        })
+        .collect();
+    let live_stream = futures_util::stream::select_all(boxed);
+
+    let guard_stream = stream::once(async move {
+        let _guard = SubscriptionGuard(visitor_clone);
+        futures_util::future::pending::<Option<Result<String, Infallible>>>().await
+    })
+    .filter_map(|x| async move { x });
+
+    let full_stream = open.chain(cached_stream).chain(live_stream).chain(guard_stream);
+
+    Ok(Response::builder()
+        .header("Content-Type", "application/x-ndjson")
+        .header("Transfer-Encoding", "chunked")
+        .header("X-Accel-Buffering", "no")
+        .body(Body::from_stream(full_stream))
+        .unwrap())
 }

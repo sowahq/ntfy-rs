@@ -113,7 +113,18 @@ impl VisitorMap {
     }
 
     #[allow(dead_code)]
+    #[allow(dead_code)]
     pub fn visitor_count(&self) -> usize {
         self.inner.len()
+    }
+}
+
+/// RAII guard that decrements a visitor's subscription count on drop.
+/// Used by SSE, NDJSON, and WebSocket handlers.
+pub struct SubscriptionGuard(pub Arc<Visitor>);
+
+impl Drop for SubscriptionGuard {
+    fn drop(&mut self) {
+        self.0.decrement_subscriptions();
     }
 }

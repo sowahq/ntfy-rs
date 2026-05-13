@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 description = "Lightweight pub/sub notification server"
 
+[lib]
+name = "ntfy_rs"
+path = "src/lib.rs"
+
 [[bin]]
 name = "ntfy-rs"
 path = "src/main.rs"
@@ -55,7 +59,7 @@ toml = "0.8"
 futures-util = "0.3"
 tokio-stream = { version = "0.1", features = ["sync"] }
 base64 = "0.22.1"
-reqwest = { version = "0.13.3", features = ["json"] }
+reqwest = { version = "0.13.3", features = ["json", "blocking"] }
 sha2 = "0.11.0"
 
 # TLS

@@ -69,7 +69,7 @@ CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc \
 ## Quick start
 
 ```bash
-# In-memory cache, no auth, port 2586
+# In-memory cache, no auth, port 2586 (see "Default port" below)
 ntfy-rs
 
 # Persistent cache
@@ -325,12 +325,38 @@ ntfy-rs --log-level debug
 RUST_LOG=ntfy_rs=debug,tower_http=warn ntfy-rs
 ```
 
+## Default port
+
+ntfy-rs defaults to **`:2586`** rather than the Go ntfy default of `:80`. The reasons:
+
+- **Privilege-free by default.** On Linux and macOS, binding ports below 1024 requires root or a specific capability (`CAP_NET_BIND_SERVICE`). Using `:80` as the default would cause an immediate `permission denied` error for any user running ntfy-rs as a normal process — the dominant use case for a single-binary server.
+- **Windows parity.** On Windows, port 80 is frequently occupied by IIS, HTTP.sys, or other services. `:2586` works out-of-the-box without conflicts.
+- **Protocol, not operational, compatibility.** ntfy-rs is wire-compatible with ntfy clients at the API level (message format, headers, routes). It does not aim to match the Go server's deployment assumptions, which are built around managed system packages, systemd units, and elevated privileges.
+
+If you need to serve on port 80 or 443 without TLS termination by a reverse proxy, either run the binary with the required privilege or set the address explicitly:
+
+```toml
+# server.toml — match Go ntfy defaults
+listen_http  = ":80"
+listen_https = ":443"
+```
+
+```bash
+# Linux: grant binding capability without running as root
+sudo setcap 'cap_net_bind_service=+ep' /usr/local/bin/ntfy-rs
+```
+
+For production, the recommended approach on all platforms is to run ntfy-rs on its default port behind a reverse proxy (nginx, Caddy, Traefik) that handles TLS and listens on 80/443.
+
+---
+
 ## Relation to ntfy (Go)
 
 ntfy-rs is a ground-up Rust reimplementation targeting a smaller binary and zero system dependencies, while maintaining full wire compatibility with ntfy clients. It is not a port of the Go codebase.
 
 | | ntfy (Go) | ntfy-rs (Rust) |
 |---|---|---|
+| Default HTTP port | `:80` (requires root/cap) | `:2586` (unprivileged) |
 | Binary size (release, uncompressed) | ~21 MB | ~5–8 MB |
 | SQLite | CGO + system lib | bundled (no CGO) |
 | TLS | via Go stdlib | rustls + aws-lc-rs (no OpenSSL, no ring) |

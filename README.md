@@ -70,13 +70,13 @@ CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc \
 
 ```bash
 # In-memory cache, no auth, port 2586 (see "Default port" below)
-ntfy-rs
+ntfy-rs serve
 
 # Persistent cache
-ntfy-rs --cache-file /var/lib/ntfy-rs/cache.db
+ntfy-rs serve --cache-file /var/lib/ntfy-rs/cache.db
 
 # With config file
-ntfy-rs --config /etc/ntfy-rs/server.toml
+ntfy-rs serve --config /etc/ntfy-rs/server.toml
 ```
 
 ## Configuration
@@ -312,17 +312,17 @@ upstream_access_token = ""   # optional; set if you have a ntfy.sh account with 
 Or via CLI flags:
 
 ```powershell
-.\ntfy-rs.exe --listen-http :2586 --base-url http://192.168.0.82:2586 --upstream-base-url https://ntfy.sh
+.\ntfy-rs.exe serve --listen-http :2586 --base-url http://192.168.0.82:2586 --upstream-base-url https://ntfy.sh
 ```
 
 ## Logging
 
 ```bash
 # Log level via flag
-ntfy-rs --log-level debug
+ntfy-rs serve --log-level debug
 
 # Per-module filtering via RUST_LOG
-RUST_LOG=ntfy_rs=debug,tower_http=warn ntfy-rs
+RUST_LOG=ntfy_rs=debug,tower_http=warn ntfy-rs serve
 ```
 
 ## Default port

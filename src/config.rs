@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use serde::Deserialize;
 use std::path::PathBuf;
 
@@ -25,10 +25,23 @@ pub const DEFAULT_SUBSCRIPTION_LIMIT: u32 = 30;
 pub const DEFAULT_KEEPALIVE_SECS: u64 = 45;
 pub const DEFAULT_MANAGER_INTERVAL_SECS: u64 = 3 * 60; // 3 minutes
 
-/// CLI arguments. Values here override the config file.
+/// Top-level CLI. Use `ntfy-rs serve` to start the server.
 #[derive(Parser, Debug)]
 #[command(name = "ntfy-rs", about = "Lightweight pub/sub notification server")]
 pub struct Cli {
+    #[command(subcommand)]
+    pub command: Commands,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum Commands {
+    /// Start the ntfy-rs server
+    Serve(ServeArgs),
+}
+
+/// Arguments for the `serve` subcommand. Values here override the config file.
+#[derive(Parser, Debug)]
+pub struct ServeArgs {
     /// Path to config file (TOML)
     #[arg(short, long, env = "NTFY_CONFIG_FILE", default_value = "server.toml")]
     pub config: PathBuf,
@@ -152,7 +165,7 @@ pub struct Config {
 
 impl Config {
     /// Build a resolved Config by merging file config with CLI overrides.
-    pub fn resolve(file: FileConfig, cli: &Cli) -> Self {
+    pub fn resolve(file: FileConfig, cli: &ServeArgs) -> Self {
         let listen_http = cli
             .listen_http
             .clone()

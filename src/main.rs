@@ -12,7 +12,7 @@ mod upstream;
 mod visitor;
 
 use clap::Parser;
-use config::{load_file_config, Config};
+use config::{load_file_config, Commands, Config};
 use state::AppState;
 use std::net::SocketAddr;
 use tracing_subscriber::{fmt, EnvFilter};
@@ -21,16 +21,20 @@ use tracing_subscriber::{fmt, EnvFilter};
 async fn main() -> anyhow::Result<()> {
     let cli = config::Cli::parse();
 
+    let serve_args = match cli.command {
+        Commands::Serve(args) => args,
+    };
+
     let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(&cli.log_level));
+        .unwrap_or_else(|_| EnvFilter::new(&serve_args.log_level));
     fmt().with_env_filter(filter).init();
 
     // Install the aws-lc-rs crypto provider for rustls. Must happen before any TLS
     // config is loaded. Safe to call multiple times (subsequent calls are no-ops).
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
-    let file_cfg = load_file_config(&cli.config)?;
-    let cfg = Config::resolve(file_cfg, &cli);
+    let file_cfg = load_file_config(&serve_args.config)?;
+    let cfg = Config::resolve(file_cfg, &serve_args);
 
     tracing::info!(
         listen_http  = %cfg.listen_http,

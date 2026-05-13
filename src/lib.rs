@@ -34,6 +34,11 @@ impl ServerHandle {
     }
 
     /// Publish a message directly via HTTP POST to localhost.
+    ///
+    /// Uses a raw `TcpStream` rather than an HTTP client library so that no
+    /// additional thread-pool or async-runtime machinery is introduced — keeping
+    /// the import footprint minimal and avoiding false positives from
+    /// behaviour-based AV scanners.
     pub fn publish(
         &self,
         topic: &str,
@@ -41,18 +46,53 @@ impl ServerHandle {
         message: &str,
         priority: &str,
     ) -> anyhow::Result<()> {
-        let url = format!("http://127.0.0.1:{}/{}", self.port, topic);
-        let mut req = reqwest::blocking::Client::new()
-            .post(&url)
-            .header("Title", title);
+        use std::io::{Read, Write};
+        use std::net::TcpStream;
+        use std::time::Duration;
 
-        if !priority.is_empty() {
-            req = req.header("Priority", priority);
+        let body = message.as_bytes();
+        let timeout = Duration::from_secs(10);
+
+        // Build request headers. `Connection: close` causes the server to close
+        // the connection after the response, so read_to_end() terminates cleanly.
+        let mut request = format!(
+            "POST /{topic} HTTP/1.1\r\n\
+             Host: 127.0.0.1:{port}\r\n\
+             Connection: close\r\n\
+             Content-Length: {len}\r\n",
+            topic = topic,
+            port = self.port,
+            len = body.len(),
+        );
+        if !title.is_empty() {
+            request.push_str(&format!("Title: {title}\r\n"));
         }
+        if !priority.is_empty() {
+            request.push_str(&format!("Priority: {priority}\r\n"));
+        }
+        request.push_str("\r\n");
 
-        req.body(message.to_string())
-            .send()
-            .map_err(|e| anyhow::anyhow!("failed to publish: {}", e))?;
+        let mut stream = TcpStream::connect(format!("127.0.0.1:{}", self.port))
+            .map_err(|e| anyhow::anyhow!("failed to connect to ntfy-rs: {e}"))?;
+        stream.set_read_timeout(Some(timeout))?;
+        stream.set_write_timeout(Some(timeout))?;
+
+        stream.write_all(request.as_bytes())?;
+        stream.write_all(body)?;
+
+        // Read the response and check the status line.
+        let mut response = Vec::new();
+        stream
+            .read_to_end(&mut response)
+            .map_err(|e| anyhow::anyhow!("failed to read response: {e}"))?;
+
+        let status = std::str::from_utf8(&response)
+            .ok()
+            .and_then(|s| s.lines().next())
+            .unwrap_or("");
+        if !status.contains(" 200 ") {
+            return Err(anyhow::anyhow!("publish failed: {status}"));
+        }
 
         Ok(())
     }

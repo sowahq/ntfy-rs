@@ -66,6 +66,42 @@ CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc \
   cargo build --release --target x86_64-pc-windows-gnu
 ```
 
+## Library usage
+
+ntfy-rs can be used as a library crate embedded in other Rust applications. The server runs as a background thread with graceful shutdown support.
+
+```rust
+use ntfy_rs::{start, ServerHandle};
+use ntfy_rs::config::{Config, ServeArgs};
+
+// Build config
+let args = ServeArgs {
+    listen_http: Some(":8090".to_string()),
+    base_url: Some("http://192.168.0.82:8090".to_string()),
+    upstream_base_url: Some("https://ntfy.sh".to_string()),
+    ..Default::default()
+};
+let config = Config::resolve(args)?;
+
+// Start server on a background thread
+let handle: ServerHandle = start(config)?;
+
+// Publish a notification
+handle.publish("mytopic", "Title", "Hello from Rust", "high")?;
+
+// Graceful shutdown
+handle.shutdown();
+```
+
+### `ServerHandle` API
+
+| Method | Description |
+|---|---|
+| `publish(topic, title, message, priority)` | Send a notification via HTTP POST to the local server |
+| `shutdown()` | Signal the server to stop and wait for it to finish |
+
+The CLI binary (`ntfy-rs serve ...`) is a thin wrapper around this same library API.
+
 ## Quick start
 
 ```bash

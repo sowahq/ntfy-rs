@@ -13,7 +13,7 @@ No CGO, no system SQLite dependency, no Firebase requirement. Single static bina
 - SQLite message cache (bundled, no system dep)
 - Optional authentication: Basic, Bearer token, ACL per topic
 - User management API (self-service + admin)
-- TLS via rustls (no OpenSSL)
+- TLS via rustls + aws-lc-rs (no OpenSSL, no ring)
 - Unix domain socket listener
 - iOS upstream poll-forward
 - UnifiedPush / Matrix Push Gateway relay
@@ -49,6 +49,8 @@ The first build takes a few minutes (SQLite is compiled from source). Subsequent
 > - `cargo not found` — close and reopen the terminal after installing rustup; it modifies `PATH` but the current session won't see the change.
 
 > **Note:** the Unix domain socket listener is disabled on Windows (`listen_unix` has no effect). All other features work normally.
+
+> **Windows AV note:** the release binary uses [aws-lc-rs](https://github.com/aws/aws-lc-rs) as the rustls crypto backend, which relies only on documented Windows APIs (`BCryptGenRandom`). Earlier builds used `ring`, which called the undocumented `SystemFunction036` (`RtlGenRandom`) and occasionally triggered false positives in behaviour-based AV scanners.
 
 ### Cross-compiling Windows binary from Linux
 
@@ -331,7 +333,7 @@ ntfy-rs is a ground-up Rust reimplementation targeting a smaller binary and zero
 |---|---|---|
 | Binary size (release, uncompressed) | ~21 MB | ~5–8 MB |
 | SQLite | CGO + system lib | bundled (no CGO) |
-| TLS | via Go stdlib | rustls (no OpenSSL) |
+| TLS | via Go stdlib | rustls + aws-lc-rs (no OpenSSL, no ring) |
 | Firebase / Stripe / WebPush | optional | out of scope |
 | Web app | embedded React SPA | not included |
 | PostgreSQL | supported | not yet |

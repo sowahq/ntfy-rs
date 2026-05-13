@@ -60,7 +60,7 @@ sha2 = "0.11.0"
 
 # TLS
 axum-server = { version = "0.8", features = ["tls-rustls-no-provider"] }
-rustls = { version = "0.23", features = ["ring"] }
+rustls = { version = "0.23", features = ["aws_lc_rs"] }
 rustls-pemfile = "2"
 
 # Unix socket serving (hyper is already a transitive dep via axum)

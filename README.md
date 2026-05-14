@@ -390,12 +390,66 @@ For production, the recommended approach on all platforms is to run ntfy-rs on i
 
 ntfy-rs is a ground-up Rust reimplementation targeting a smaller binary and zero system dependencies, while maintaining full wire compatibility with ntfy clients. It is not a port of the Go codebase.
 
-| | ntfy (Go) | ntfy-rs (Rust) |
-|---|---|---|
-| Default HTTP port | `:80` (requires root/cap) | `:2586` (unprivileged) |
+### Feature comparison
+
+#### Core messaging
+
+| Feature | ntfy (Go) | ntfy-rs (Rust) |
+|---|:---:|:---:|
+| HTTP publish (`PUT`/`POST /{topic}`) | ✅ | ✅ |
+| NDJSON stream (`/{topic}/json`) | ✅ | ✅ |
+| SSE stream (`/{topic}/sse`) | ✅ | ✅ |
+| WebSocket (`/{topic}/ws`) | ✅ | ✅ |
+| Multi-topic subscriptions | ✅ | ✅ |
+| Poll mode (`?poll=1`, `?since=`) | ✅ | ✅ |
+| Scheduled / delayed delivery (`X-Delay`) | ✅ | ✅ |
+| Title, priority, tags, click URL, icon | ✅ | ✅ |
+| Markdown rendering (`X-Markdown`) | ✅ | ✅ |
+| Action buttons (`X-Actions`) | ✅ | ❌ |
+| File attachments (local storage / S3) | ✅ | ❌ |
+| Base64-encoded binary body | ✅ | ❌ |
+
+#### Authentication & authorization
+
+| Feature | ntfy (Go) | ntfy-rs (Rust) |
+|---|:---:|:---:|
+| Basic auth & Bearer token | ✅ | ✅ |
+| Per-topic ACL | ✅ | ✅ |
+| Anonymous access tiers (read-write / read-only / deny-all) | ✅ | ✅ |
+| User self-service API (`/v1/account`) | ✅ | ✅ |
+| Admin user management API (`/v1/admin`) | ✅ | ✅ |
+| Bearer token creation & revocation | ✅ | ✅ |
+
+#### Transport & infrastructure
+
+| Feature | ntfy (Go) | ntfy-rs (Rust) |
+|---|:---:|:---:|
+| HTTP listener | ✅ | ✅ |
+| HTTPS / TLS (built-in) | ✅ (Go stdlib) | ✅ (rustls + aws-lc-rs) |
+| Unix domain socket | ✅ | ✅ (Linux/macOS) |
+| Per-IP rate limiting | ✅ | ✅ |
+| Per-IP subscription limits | ✅ | ✅ |
+| SQLite message cache | ✅ (CGO + system lib) | ✅ (bundled, no CGO) |
+| Config file | ✅ (YAML) | ✅ (TOML) |
+| Environment variables | ✅ | ✅ |
+| CLI flags | ✅ | ✅ |
+| Prometheus metrics endpoint | ✅ | ❌ |
+| Web app (React SPA) | ✅ | ❌ |
+| Embeddable library | ❌ | ✅ |
+| Native Windows binary (no CGO) | ❌ | ✅ |
+| Default port | `:80` (requires root/cap) | `:2586` (unprivileged) |
 | Binary size (release, uncompressed) | ~21 MB | ~5–8 MB |
-| SQLite | CGO + system lib | bundled (no CGO) |
-| TLS | via Go stdlib | rustls + aws-lc-rs (no OpenSSL, no ring) |
-| Firebase / Stripe / WebPush | optional | out of scope |
-| Web app | embedded React SPA | not included |
+
+#### Push integrations
+
+| Feature | ntfy (Go) | ntfy-rs (Rust) |
+|---|:---:|:---:|
+| iOS upstream poll-forward (APNs via ntfy.sh) | ✅ | ✅ |
+| UnifiedPush / Matrix Push Gateway | ✅ | ✅ |
+| Firebase Cloud Messaging (FCM) | ✅ (optional) | ❌ |
+| Web Push / VAPID | ✅ | ❌ |
+| SMTP ingress (publish via email) | ✅ | ❌ |
+| Email notifications (outbound) | ✅ | ❌ |
+| Phone call notifications (Twilio) | ✅ | ❌ |
+| Stripe billing / usage tiers | ✅ (ntfy.sh only) | ❌ |
 | PostgreSQL | supported | not yet |

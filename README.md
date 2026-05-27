@@ -2,7 +2,7 @@
 
 A Rust implementation of the [ntfy](https://ntfy.sh) pub/sub notification server. Wire-compatible with existing ntfy clients (Android, iOS, web, CLI).
 
-No CGO, no system SQLite dependency, no Firebase requirement. Single static binary.
+No cgo, no system SQLite dependency, no Firebase requirement. Single static binary.
 
 ## Features
 
@@ -479,14 +479,14 @@ ntfy-rs is a ground-up Rust reimplementation targeting a smaller binary and zero
 | Unix domain socket | ✅ | ✅ (Linux/macOS) |
 | Per-IP rate limiting | ✅ | ✅ |
 | Per-IP subscription limits | ✅ | ✅ |
-| SQLite message cache | ✅ (CGO + system lib) | ✅ (bundled, no CGO) |
+| SQLite message cache | ✅ (cgo + system lib) | ✅ (bundled, no cgo) |
 | Config file | ✅ (YAML) | ✅ (TOML) |
 | Environment variables | ✅ | ✅ |
 | CLI flags | ✅ | ✅ |
 | Prometheus metrics endpoint | ✅ | ✅ |
 | Web app (React SPA) | ✅ | ❌ |
 | Embeddable library | ❌ | ✅ |
-| Native Windows binary (no CGO) | ❌ | ✅ |
+| Native Windows binary (no cgo) | ❌ | ✅ |
 | Default port | `:80` (requires root/cap) | `:2586` (unprivileged) |
 | Binary size (release, uncompressed) | ~21 MB | ~5–8 MB |
 

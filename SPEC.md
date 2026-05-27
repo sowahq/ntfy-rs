@@ -332,6 +332,32 @@ Expired attachments return `404` immediately, even if the background cleanup tas
 }
 ```
 
+### `GET /metrics`
+
+Returns server metrics in the [Prometheus text exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/).
+
+No authentication required. Restrict at the network level if public exposure is undesirable.
+
+**Response** `200 OK` — `Content-Type: text/plain; version=0.0.4; charset=utf-8`
+
+```
+# HELP ntfy_messages_published_total Total number of messages published.
+# TYPE ntfy_messages_published_total counter
+ntfy_messages_published_total 42
+
+# HELP ntfy_messages_cached Messages currently stored in the cache.
+# TYPE ntfy_messages_cached gauge
+ntfy_messages_cached 17
+
+# HELP ntfy_subscribers Active subscriber connections (SSE, NDJSON, WebSocket).
+# TYPE ntfy_subscribers gauge
+ntfy_subscribers 3
+
+# HELP ntfy_topics Live topics with at least one active subscriber.
+# TYPE ntfy_topics gauge
+ntfy_topics 2
+```
+
 ---
 
 ## Account (self-service)

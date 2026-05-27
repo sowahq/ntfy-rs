@@ -57,6 +57,7 @@ pub async fn subscribe_ws(
     let t = state.topics.get_or_create(&topic);
     let rx = t.tx.subscribe();
     visitor.increment_subscriptions();
+    metrics::gauge!("ntfy_subscribers").increment(1.0);
 
     let keepalive_secs = state.config.keepalive_secs;
     let visitor_clone = Arc::clone(&visitor);
@@ -107,6 +108,7 @@ pub async fn subscribe_ws_multi(
     cached.sort_by_key(|m| m.time);
 
     visitor.increment_subscriptions();
+    metrics::gauge!("ntfy_subscribers").increment(1.0);
 
     let keepalive_secs = state.config.keepalive_secs;
     let visitor_clone = Arc::clone(&visitor);

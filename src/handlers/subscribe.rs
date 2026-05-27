@@ -135,6 +135,7 @@ pub async fn subscribe_sse(
     let t = state.topics.get_or_create(&topic);
     let rx = t.tx.subscribe();
     visitor.increment_subscriptions();
+    metrics::gauge!("ntfy_subscribers").increment(1.0);
 
     // Decrement subscription count when the stream ends.
     // We wrap the stream in a guard that decrements on drop.
@@ -195,7 +196,14 @@ fn build_sse_stream(
         .chain(guard_stream)
 }
 
-use crate::visitor::SubscriptionGuard;
+struct SubscriptionGuard(Arc<crate::visitor::Visitor>);
+
+impl Drop for SubscriptionGuard {
+    fn drop(&mut self) {
+        self.0.decrement_subscriptions();
+        metrics::gauge!("ntfy_subscribers").decrement(1.0);
+    }
+}
 
 /// Resolve `params.since()` into a list of cached messages for a single topic.
 pub fn resolve_since(
@@ -268,6 +276,7 @@ pub async fn subscribe_ndjson(
     let t = state.topics.get_or_create(&topic);
     let rx = t.tx.subscribe();
     visitor.increment_subscriptions();
+    metrics::gauge!("ntfy_subscribers").increment(1.0);
 
     let visitor_clone = Arc::clone(&visitor);
     let stream = build_ndjson_stream(topic.clone(), cached, rx, visitor_clone);
@@ -359,6 +368,7 @@ pub async fn subscribe_multi_sse(
 
     cached.sort_by_key(|m| m.time);
     visitor.increment_subscriptions();
+    metrics::gauge!("ntfy_subscribers").increment(1.0);
 
     let first_topic = topics[0].clone();
     let keepalive_secs = state.config.keepalive_secs;
@@ -479,6 +489,7 @@ pub async fn subscribe_multi_ndjson(
     }
 
     visitor.increment_subscriptions();
+    metrics::gauge!("ntfy_subscribers").increment(1.0);
     let first_topic = topics[0].clone();
     let visitor_clone = Arc::clone(&visitor);
 

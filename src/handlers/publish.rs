@@ -213,6 +213,7 @@ pub async fn publish(
     }
 
     tracing::debug!(topic = %topic, id = %msg.id, delayed = is_delayed, "published");
+    metrics::counter!("ntfy_messages_published_total").increment(1);
 
     Ok((StatusCode::OK, Json(msg)))
 }

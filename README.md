@@ -17,6 +17,7 @@ No CGO, no system SQLite dependency, no Firebase requirement. Single static bina
 - Unix domain socket listener
 - iOS upstream poll-forward
 - UnifiedPush / Matrix Push Gateway relay
+- Web Push notifications (VAPID + RFC 8188 AES-128-GCM, pure Rust — no OpenSSL)
 
 ## Build
 
@@ -496,7 +497,7 @@ ntfy-rs is a ground-up Rust reimplementation targeting a smaller binary and zero
 | iOS upstream poll-forward (APNs via ntfy.sh) | ✅ | ✅ |
 | UnifiedPush / Matrix Push Gateway | ✅ | ✅ |
 | Firebase Cloud Messaging (FCM) | ✅ (optional) | ❌ |
-| Web Push / VAPID | ✅ | ❌ |
+| Web Push / VAPID | ✅ | ✅ |
 | SMTP ingress (publish via email) | ✅ | ❌ |
 | Email notifications (outbound) | ✅ | ✅ |
 | Phone call notifications (Twilio) | ✅ | ❌ |

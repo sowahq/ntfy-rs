@@ -1,13 +1,14 @@
 use crate::{
     auth,
-    handlers::{account, admin, file, health, matrix, publish, subscribe, ws},
+    handlers::{account, admin, file, health, matrix, metrics, publish, subscribe, ws},
     state::AppState,
 };
 use axum::{routing::{delete, get, post, put}, Router};
+use metrics_exporter_prometheus::PrometheusHandle;
 use std::sync::Arc;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
-pub fn build(state: AppState) -> Router {
+pub fn build(state: AppState, metrics_handle: PrometheusHandle) -> Router {
     let auth_layer = auth::make_auth_layer(
         state.effective_auth_db().clone(),
         Arc::clone(&state.config),
@@ -53,8 +54,11 @@ pub fn build(state: AppState) -> Router {
         .route("/_matrix/push/v1/notify",    get(matrix::discovery))
         // File attachment downloads (unauthenticated — opaque ID is the access control).
         .route("/file/:id",                  get(file::serve_file))
+        // Prometheus metrics (unauthenticated).
+        .route("/metrics",                   get(metrics::metrics))
         .with_state(state)
         .merge(protected)
+        .layer(axum::extract::Extension(metrics_handle))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
 }

@@ -190,13 +190,18 @@ async fn run_server(
 
     let state = AppState::new(config.clone(), db, auth_db);
 
+    // Install Prometheus metrics recorder.
+    let metrics_handle = metrics_exporter_prometheus::PrometheusBuilder::new()
+        .install_recorder()
+        .map_err(|e| anyhow::anyhow!("failed to install Prometheus recorder: {e}"))?;
+
     // Background manager.
     {
         let s = state.clone();
         tokio::spawn(async move { manager::run(s).await });
     }
 
-    let app = router::build(state);
+    let app = router::build(state, metrics_handle);
 
     // ── HTTP listener ─────────────────────────────────────────────────────
     let http_addr: SocketAddr = normalise_addr(&config.listen_http)?;

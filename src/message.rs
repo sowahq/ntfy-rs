@@ -1,6 +1,7 @@
 use rand::distributions::Alphanumeric;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 pub const MESSAGE_ID_LENGTH: usize = 12;
 pub const MAX_TOPIC_LENGTH: usize = 64;
@@ -74,8 +75,20 @@ pub struct Action {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub method: Option<String>,
 
+    /// Extra HTTP request headers (for `http` actions).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub headers: Option<HashMap<String, String>>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body: Option<String>,
+
+    /// Android broadcast intent (for `broadcast` actions).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub intent: Option<String>,
+
+    /// Android broadcast intent extras (for `broadcast` actions).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extras: Option<HashMap<String, String>>,
 
     #[serde(default)]
     pub clear: bool,

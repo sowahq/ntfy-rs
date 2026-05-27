@@ -82,6 +82,8 @@ Publish a message to a topic. Creates the topic if it does not exist.
 | `X-Click` | `Click` | string | URL to open when notification is clicked |
 | `X-Icon` | `Icon` | string | URL of notification icon |
 | `X-Markdown` | `Markdown`, `md` | bool | `1`/`true`/`yes` to render body as Markdown |
+| `X-Actions` | `Actions`, `action` | string | Action buttons (see below) |
+| `X-Encoding` | `Encoding`, `enc`, `e` | string | `base64` to send a binary body (see below) |
 | `X-Delay` | `Delay`, `X-At`, `At`, `X-In`, `In` | string | Scheduled delivery (see below) |
 | `Content-Type` | | string | `text/markdown` sets Markdown rendering |
 
@@ -94,6 +96,55 @@ Publish a message to a topic. Creates the topic if it does not exist.
 | RFC 3339 | `2024-04-05T12:00:00Z` | Absolute delivery time |
 
 Delays in the past are treated as immediate. Delays beyond `max_delay_secs` (default 3 days) return `400`.
+
+**Binary body encoding**
+
+To publish a binary payload, base64-encode it and set `X-Encoding: base64`:
+
+```bash
+curl -H "X-Encoding: base64" \
+     -d "$(echo -n 'binary data' | base64)" \
+     ntfy.example.com/mytopic
+```
+
+The server stores and forwards the base64 string as-is. Subscribers see `"encoding": "base64"` in the message JSON and are responsible for decoding. The server never encodes or decodes the body. Only `base64` is accepted; any other value returns `400`.
+
+**Action button formats**
+
+The `X-Actions` value is a semicolon-separated list of actions. Each action is a comma-separated list of fields:
+
+```
+X-Actions: <type>, <label>[, <url>][, key=value, ...][; ...]
+```
+
+| Type | Fields | Description |
+|---|---|---|
+| `view` | `view, <label>, <url>[, clear=true]` | Open a URL in the browser when tapped |
+| `http` | `http, <label>, <url>[, method=POST][, headers.<Name>=<value>][, body=<body>][, clear=true]` | Fire an HTTP request from the client device |
+| `broadcast` | `broadcast, <label>[, intent=<intent>][, extras.<key>=<value>][, clear=true]` | Send an Android broadcast intent (Android only) |
+
+Examples:
+
+```
+# Single view action
+X-Actions: view, Open dashboard, https://example.com/dashboard
+
+# HTTP action that POSTs a restart command
+X-Actions: http, Restart, https://example.com/api/restart, method=POST, body={}, clear=true
+
+# HTTP action with a custom request header
+X-Actions: http, Approve, https://example.com/approve, method=POST, headers.Authorization=Bearer mytoken
+
+# Multiple actions separated by semicolons
+X-Actions: view, Logs, https://example.com/logs; http, Restart, https://example.com/restart, method=POST
+
+# Android broadcast
+X-Actions: broadcast, Take photo, intent=io.example.ACTION_CAMERA, extras.cmd=snap, clear=true
+```
+
+Unknown action types and malformed entries are silently skipped. `clear=true` causes the notification to be dismissed on the device after the action fires.
+
+**Important:** `http` and `broadcast` actions are executed entirely by the client app. The server is a dumb carrier — it does not proxy or execute HTTP requests.
 
 **Request body**
 

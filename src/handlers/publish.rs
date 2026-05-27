@@ -2,7 +2,7 @@ use crate::{
     auth::{authorize, AuthUser, Permission},
     db::cache,
     error::AppError,
-    message::{parse_topics, valid_topic, Message},
+    message::{generate_id, parse_topics, valid_topic, Action, Message},
     state::AppState,
     upstream,
 };
@@ -76,6 +76,16 @@ pub async fn publish(
     if let Some(v) = param(&headers, &params, &["content-type", "content_type"]) {
         if v.to_lowercase().contains("text/markdown") {
             msg.content_type = "text/markdown".to_string();
+        }
+    }
+    if let Some(v) = param(&headers, &params, &["x-actions", "actions", "action"]) {
+        msg.actions = parse_actions(&v);
+    }
+    if let Some(v) = param(&headers, &params, &["x-encoding", "encoding", "enc", "e"]) {
+        if v.to_lowercase() == "base64" {
+            msg.encoding = "base64".to_string();
+        } else {
+            return Err(AppError::BadRequest(format!("unsupported encoding: {v}")));
         }
     }
 
@@ -254,4 +264,194 @@ fn parse_duration_str(s: &str) -> Option<i64> {
         return None;
     };
     num_part.trim().parse::<i64>().ok().map(|n| n * unit)
+}
+
+/// Parse the `X-Actions` header value into a list of [`Action`]s.
+///
+/// Format: semicolon-separated list of actions, each being a comma-separated
+/// list of fields:
+/// ```text
+/// <type>, <label>[, <url>][, key=value, ...]
+/// ```
+///
+/// Supported types:
+/// - `view`      — open a URL: `view, Open, https://example.com[, clear=true]`
+/// - `http`      — fire HTTP request: `http, Restart, https://example.com/restart[, method=POST][, headers.Authorization=Bearer t][, body={}][, clear=true]`
+/// - `broadcast` — Android broadcast: `broadcast, Take photo[, intent=io.example.ACTION][, extras.cmd=snap][, clear=true]`
+///
+/// Unknown types and malformed entries are silently skipped, matching ntfy (Go) behaviour.
+fn parse_actions(s: &str) -> Vec<Action> {
+    s.split(';')
+        .filter_map(|part| parse_single_action(part.trim()))
+        .collect()
+}
+
+fn parse_single_action(s: &str) -> Option<Action> {
+    let fields: Vec<&str> = s.split(',').map(str::trim).collect();
+    if fields.len() < 2 {
+        return None;
+    }
+    let action_type = fields[0].to_lowercase();
+    let label = fields[1].to_string();
+
+    // Field 2 is a positional URL if it does not contain '=' (i.e. is not a key=value pair).
+    let (positional, kv_start) = if fields.len() > 2 && !fields[2].contains('=') {
+        (Some(fields[2].to_string()), 3)
+    } else {
+        (None, 2)
+    };
+
+    // Parse remaining fields as key=value pairs; split on the first '=' only so
+    // values such as `headers.Authorization=Bearer token` are handled correctly.
+    // Keys are stored with their original case so header names (e.g. `Authorization`)
+    // round-trip correctly; lookups for built-in params use case-insensitive comparison.
+    let mut kv: HashMap<String, String> = HashMap::new();
+    for f in &fields[kv_start..] {
+        if let Some((k, v)) = f.split_once('=') {
+            kv.insert(k.trim().to_string(), v.trim().to_string());
+        }
+    }
+
+    let kv_get = |name: &str| -> Option<String> {
+        kv.iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(name))
+            .map(|(_, v)| v.clone())
+    };
+
+    let clear = kv_get("clear").map(|v| v == "true").unwrap_or(false);
+
+    let action = match action_type.as_str() {
+        "view" => Action {
+            id: generate_id(),
+            action: "view".into(),
+            label,
+            url: positional,
+            method: None,
+            headers: None,
+            body: None,
+            intent: None,
+            extras: None,
+            clear,
+        },
+        "http" => {
+            let headers: HashMap<String, String> = kv
+                .iter()
+                .filter(|(k, _)| k.to_lowercase().starts_with("headers."))
+                .map(|(k, v)| (k["headers.".len()..].to_string(), v.clone()))
+                .collect();
+            Action {
+                id: generate_id(),
+                action: "http".into(),
+                label,
+                url: positional,
+                method: kv_get("method"),
+                headers: if headers.is_empty() { None } else { Some(headers) },
+                body: kv_get("body"),
+                intent: None,
+                extras: None,
+                clear,
+            }
+        }
+        "broadcast" => {
+            let extras: HashMap<String, String> = kv
+                .iter()
+                .filter(|(k, _)| k.to_lowercase().starts_with("extras."))
+                .map(|(k, v)| (k["extras.".len()..].to_string(), v.clone()))
+                .collect();
+            Action {
+                id: generate_id(),
+                action: "broadcast".into(),
+                label,
+                url: None,
+                method: None,
+                headers: None,
+                body: None,
+                intent: kv_get("intent"),
+                extras: if extras.is_empty() { None } else { Some(extras) },
+                clear,
+            }
+        }
+        _ => return None,
+    };
+
+    Some(action)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_actions_view() {
+        let actions = parse_actions("view, Open website, https://example.com");
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0].action, "view");
+        assert_eq!(actions[0].label, "Open website");
+        assert_eq!(actions[0].url.as_deref(), Some("https://example.com"));
+        assert!(!actions[0].clear);
+    }
+
+    #[test]
+    fn test_parse_actions_view_clear() {
+        let actions = parse_actions("view, Open, https://example.com, clear=true");
+        assert!(actions[0].clear);
+    }
+
+    #[test]
+    fn test_parse_actions_http() {
+        let actions = parse_actions(
+            "http, Restart, https://example.com/restart, method=POST, body={}, clear=true",
+        );
+        assert_eq!(actions.len(), 1);
+        let a = &actions[0];
+        assert_eq!(a.action, "http");
+        assert_eq!(a.label, "Restart");
+        assert_eq!(a.url.as_deref(), Some("https://example.com/restart"));
+        assert_eq!(a.method.as_deref(), Some("POST"));
+        assert_eq!(a.body.as_deref(), Some("{}"));
+        assert!(a.clear);
+    }
+
+    #[test]
+    fn test_parse_actions_http_headers() {
+        let actions = parse_actions(
+            "http, Ping, https://example.com, headers.Authorization=Bearer tok",
+        );
+        let headers = actions[0].headers.as_ref().unwrap();
+        assert_eq!(headers.get("Authorization").map(String::as_str), Some("Bearer tok"));
+    }
+
+    #[test]
+    fn test_parse_actions_broadcast() {
+        let actions = parse_actions(
+            "broadcast, Take photo, intent=io.example.ACTION, extras.cmd=snap",
+        );
+        assert_eq!(actions[0].action, "broadcast");
+        assert_eq!(actions[0].intent.as_deref(), Some("io.example.ACTION"));
+        let extras = actions[0].extras.as_ref().unwrap();
+        assert_eq!(extras.get("cmd").map(String::as_str), Some("snap"));
+    }
+
+    #[test]
+    fn test_parse_actions_multiple() {
+        let actions = parse_actions(
+            "view, Docs, https://example.com; http, Restart, https://example.com/restart",
+        );
+        assert_eq!(actions.len(), 2);
+        assert_eq!(actions[0].action, "view");
+        assert_eq!(actions[1].action, "http");
+    }
+
+    #[test]
+    fn test_parse_actions_unknown_type_skipped() {
+        let actions = parse_actions("unknown, label, url; view, Docs, https://example.com");
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0].action, "view");
+    }
+
+    #[test]
+    fn test_parse_actions_too_few_fields_skipped() {
+        let actions = parse_actions("view");
+        assert!(actions.is_empty());
+    }
 }

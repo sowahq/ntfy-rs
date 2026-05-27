@@ -1,7 +1,7 @@
 use rusqlite::{Connection, Result};
 
 /// Current schema version. Bump when adding migrations.
-const SCHEMA_VERSION: u32 = 4;
+const SCHEMA_VERSION: u32 = 5;
 
 /// Apply all pending migrations in order.
 pub fn migrate(conn: &Connection) -> Result<()> {
@@ -23,6 +23,9 @@ pub fn migrate(conn: &Connection) -> Result<()> {
     }
     if version < 4 {
         migrate_v4(conn)?;
+    }
+    if version < 5 {
+        migrate_v5(conn)?;
     }
 
     Ok(())
@@ -156,6 +159,40 @@ fn migrate_v4(conn: &Connection) -> Result<()> {
             auth     TEXT NOT NULL,
             created  INTEGER NOT NULL
         );
+
+        CREATE INDEX IF NOT EXISTS idx_webpush_subs_topic
+            ON webpush_subscriptions (topic);
+    ")?;
+
+    set_user_version(conn, SCHEMA_VERSION)?;
+    Ok(())
+}
+
+fn migrate_v5(conn: &Connection) -> Result<()> {
+    // Recreate webpush_subscriptions with a UNIQUE(topic, endpoint) constraint
+    // to prevent duplicate subscriptions from the same browser endpoint, which
+    // would cause duplicate push notifications on publish.
+    // SQLite does not support ADD CONSTRAINT on existing tables, so we use the
+    // standard recreate-copy-drop-rename pattern.
+    conn.execute_batch("
+        CREATE TABLE IF NOT EXISTS webpush_subscriptions_new (
+            id       TEXT PRIMARY KEY,
+            topic    TEXT NOT NULL,
+            endpoint TEXT NOT NULL,
+            p256dh   TEXT NOT NULL,
+            auth     TEXT NOT NULL,
+            created  INTEGER NOT NULL,
+            UNIQUE(topic, endpoint)
+        );
+
+        INSERT OR IGNORE INTO webpush_subscriptions_new
+            SELECT id, topic, endpoint, p256dh, auth, created
+            FROM webpush_subscriptions;
+
+        DROP TABLE webpush_subscriptions;
+
+        ALTER TABLE webpush_subscriptions_new
+            RENAME TO webpush_subscriptions;
 
         CREATE INDEX IF NOT EXISTS idx_webpush_subs_topic
             ON webpush_subscriptions (topic);

@@ -36,10 +36,14 @@ pub fn store_vapid_keys(conn: &Connection, private_pem: &str, public_b64: &str) 
     Ok(())
 }
 
-/// Insert a new web push subscription record.
+/// Insert or replace a web push subscription record.
+///
+/// Uses `INSERT OR REPLACE` so that re-subscribing from the same browser
+/// endpoint (e.g. on page reload) updates the row in place rather than
+/// creating a duplicate that would result in double notifications.
 pub fn add_subscription(conn: &Connection, sub: &Subscription) -> Result<()> {
     conn.execute(
-        "INSERT INTO webpush_subscriptions \
+        "INSERT OR REPLACE INTO webpush_subscriptions \
          (id, topic, endpoint, p256dh, auth, created) \
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         params![sub.id, sub.topic, sub.endpoint, sub.p256dh, sub.auth, sub.created],

@@ -115,6 +115,31 @@ ntfy-rs serve --cache-file /var/lib/ntfy-rs/cache.db
 ntfy-rs serve --config /etc/ntfy-rs/server.toml
 ```
 
+### Windows Firewall
+
+On Windows, the server requires inbound TCP access on its port. On first launch, Windows Defender Firewall will show a prompt:
+
+> "Windows Defender Firewall has blocked some features of this app"
+
+- **Check "Private networks"** (your home/work LAN)
+- **Uncheck "Public networks"** (coffee shops, hotels — no need to expose ntfy there)
+- Click **Allow**
+
+If you accidentally deny or miss the prompt, run these commands in elevated PowerShell:
+
+```powershell
+# Ensure your network is classified as Private
+Set-NetConnectionProfile -Name "<NetworkName>" -NetworkCategory Private
+
+# Remove any existing ntfy firewall rules (optional cleanup)
+Get-NetFirewallRule | Where-Object { $_.DisplayName -like "*ntfy*" } | Remove-NetFirewallRule
+
+# Add firewall rule
+New-NetFirewallRule -DisplayName "ntfy-rs Server" -Direction Inbound -Protocol TCP -LocalPort 2586 -Action Allow -Profile Private
+```
+
+If you change the port, update the firewall rule to match.
+
 ## Configuration
 
 All settings can be provided via config file (TOML), CLI flag, or `NTFY_*` environment variable. CLI flags override the config file.

@@ -3,6 +3,7 @@ name = "ntfy-rs"
 version = "0.1.0"
 edition = "2021"
 description = "Lightweight pub/sub notification server"
+license = "Apache-2.0 OR GPL-2.0"
 
 [lib]
 name = "ntfy_rs"
@@ -77,3 +78,4 @@ lto = true           # link-time optimisation
 codegen-units = 1    # single codegen unit for better dead-code elimination
 strip = true         # strip symbols (equivalent to -s -w in Go)
 panic = "abort"      # smaller binary; no unwinding tables
+

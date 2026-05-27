@@ -3,7 +3,7 @@ name = "ntfy-rs"
 version = "0.1.0"
 edition = "2021"
 description = "Lightweight pub/sub notification server"
-license = "Apache-2.0 OR GPL-2.0"
+license = "Apache-2.0 OR GPL-2.0-only"
 
 [lib]
 name = "ntfy_rs"
@@ -19,8 +19,8 @@ tokio = { version = "1", features = ["full"] }
 
 # HTTP server
 axum = { version = "0.7", features = ["ws"] }
-tower = { version = "0.4", features = ["util"] }
-tower-http = { version = "0.5", features = ["cors", "trace"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["cors", "trace"] }
 
 # SQLite (statically linked — no system dep, no CGO equivalent)
 rusqlite = { version = "0.31", features = ["bundled"] }
@@ -66,7 +66,6 @@ sha2 = "0.11.0"
 # TLS
 axum-server = { version = "0.8", features = ["tls-rustls-no-provider"] }
 rustls = { version = "0.23", features = ["aws_lc_rs"] }
-rustls-pemfile = "2"
 
 # Metrics (Prometheus exposition format)
 metrics = "0.24"

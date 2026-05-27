@@ -11,6 +11,7 @@ mod state;
 mod topic;
 mod upstream;
 mod visitor;
+mod webpush;
 
 pub use config::{Config, FileConfig, ServeArgs};
 
@@ -189,7 +190,20 @@ async fn run_server(
         None
     };
 
-    let state = AppState::new(config.clone(), db, auth_db);
+    // Initialise VAPID keys (load from DB or generate new). Failure is
+    // non-fatal: web push is simply disabled for this run.
+    let vapid = match webpush::load_or_generate(&db) {
+        Ok(v) => {
+            tracing::info!(public_key = %v.public_key_b64, "VAPID key loaded");
+            Some(std::sync::Arc::new(v))
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to load VAPID keys — web push disabled");
+            None
+        }
+    };
+
+    let state = AppState::new(config.clone(), db, auth_db, vapid);
 
     // Install Prometheus metrics recorder.
     let metrics_handle = metrics_exporter_prometheus::PrometheusBuilder::new()

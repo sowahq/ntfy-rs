@@ -2,6 +2,7 @@ pub mod attachments;
 pub mod cache;
 pub mod schema;
 pub mod users;
+pub mod webpush;
 
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;

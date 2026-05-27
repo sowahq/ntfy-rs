@@ -6,4 +6,5 @@ pub mod matrix;
 pub mod metrics;
 pub mod publish;
 pub mod subscribe;
+pub mod webpush;
 pub mod ws;

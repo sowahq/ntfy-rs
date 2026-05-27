@@ -1,6 +1,6 @@
 use crate::{
     auth,
-    handlers::{account, admin, file, health, matrix, metrics, publish, subscribe, ws},
+    handlers::{account, admin, file, health, matrix, metrics, publish, subscribe, webpush, ws},
     state::AppState,
 };
 use axum::{routing::{delete, get, post, put}, Router};
@@ -56,6 +56,13 @@ pub fn build(state: AppState, metrics_handle: PrometheusHandle) -> Router {
         .route("/file/:id",                  get(file::serve_file))
         // Prometheus metrics (unauthenticated).
         .route("/metrics",                   get(metrics::metrics))
+        // Web push: VAPID public key + subscription management.
+        // All three are unauthenticated — browsers register subscriptions before
+        // they have a session token, and the opaque UUID acts as access control
+        // for deletion.
+        .route("/v1/webpush/vapid-key",           get(webpush::get_vapid_key))
+        .route("/v1/webpush/subscriptions",       post(webpush::subscribe))
+        .route("/v1/webpush/subscriptions/:id",   delete(webpush::unsubscribe))
         .with_state(state)
         .merge(protected)
         .layer(axum::extract::Extension(metrics_handle))

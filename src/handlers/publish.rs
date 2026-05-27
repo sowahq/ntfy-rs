@@ -6,6 +6,7 @@ use crate::{
     message::{generate_id, parse_topics, valid_topic, Action, Attachment, Message},
     state::AppState,
     upstream,
+    webpush,
 };
 use axum::{
     body::Bytes,
@@ -217,6 +218,18 @@ pub async fn publish(
             let msg2 = msg.clone();
             tokio::spawn(async move {
                 email::send_notification(&smtp, &msg2).await;
+            });
+        }
+
+        // Web push notifications — fire-and-forget.
+        if let Some(ref vapid) = state.vapid {
+            let vapid2 = Arc::clone(vapid);
+            let db2    = state.db.clone();
+            let http2  = state.http.clone();
+            let topic2 = topic.clone();
+            let msg2   = msg.clone();
+            tokio::spawn(async move {
+                webpush::send_notifications(&http2, &vapid2, &db2, &topic2, &msg2).await;
             });
         }
     }

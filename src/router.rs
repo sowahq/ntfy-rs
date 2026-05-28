@@ -9,6 +9,8 @@ use std::sync::Arc;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
 pub fn build(state: AppState, metrics_handle: PrometheusHandle) -> Router {
+    let body_limit = state.config.attachment_file_size_limit as usize;
+
     let auth_layer = auth::make_auth_layer(
         state.effective_auth_db().clone(),
         Arc::clone(&state.config),
@@ -68,4 +70,5 @@ pub fn build(state: AppState, metrics_handle: PrometheusHandle) -> Router {
         .layer(axum::extract::Extension(metrics_handle))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
+        .layer(axum::extract::DefaultBodyLimit::max(body_limit))
 }

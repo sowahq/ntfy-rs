@@ -83,6 +83,9 @@ lettre = { version = "0.11", default-features = false, features = ["smtp-transpo
 hyper = { version = "1", features = ["http1", "server"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 
+[build-dependencies]
+winres = "0.1"
+
 [profile.release]
 opt-level = "z"      # optimise for size
 lto = true           # link-time optimisation

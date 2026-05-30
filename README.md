@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="assets/ntfy-rs_logo.png" alt="ntfy-rs logo" width="256">
+</div>
+
 # ntfy-rs
 
 A Rust implementation of the [ntfy](https://ntfy.sh) pub/sub notification server. Wire-compatible with existing ntfy clients (Android, iOS, web, CLI).
@@ -267,6 +271,21 @@ curl -H "Title: Deployment done" \
 curl -H "Delay: 30m" -d "Reminder" ntfy.example.com/mytopic
 
 # Delay formats: 30s, 5m, 2h, 1d, Unix timestamp, RFC 3339
+
+# Upload a file attachment
+curl -H "Title: Photo" -H "X-Filename: photo.jpg" \
+     -H "Content-Type: image/jpeg" \
+     --data-binary @photo.jpg \
+     ntfy.example.com/mytopic
+
+# External attachment URL (no upload)
+curl -H "Title: Image test" -H "Attach: https://ntfy.sh/static/img/ntfy.png" \
+     -d "Check this out" ntfy.example.com/mytopic
+
+# Action buttons
+curl -H "Title: Server down" \
+     -H "Actions: view, Open dashboard, https://grafana.example.com; http, Restart, https://api.example.com/restart, method=POST, clear=true" \
+     -d "CPU at 100%" ntfy.example.com/mytopic
 ```
 
 ### Publish headers

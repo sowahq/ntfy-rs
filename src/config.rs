@@ -155,6 +155,9 @@ pub struct FileConfig {
     pub smtp_to: Option<Vec<String>>,
     /// Only send email for messages with priority >= this value (1–5). 0 = send all.
     pub smtp_min_priority: Option<u8>,
+    /// Use STARTTLS for the SMTP connection. Default: true. Set to false for
+    /// local testing with servers that don't support TLS (e.g. Mailpit).
+    pub smtp_starttls: Option<bool>,
 }
 
 /// Resolved, fully-populated config used at runtime.
@@ -220,6 +223,8 @@ pub struct SmtpConfig {
     pub to: Vec<String>,
     /// Minimum priority to trigger an email (0 = send for all priorities).
     pub min_priority: u8,
+    /// Whether to use STARTTLS. Default: true.
+    pub starttls: bool,
 }
 
 impl Config {
@@ -317,6 +322,7 @@ fn resolve_smtp(file: &FileConfig) -> Option<SmtpConfig> {
         from: file.smtp_from.clone().unwrap_or_else(|| "ntfy-rs".to_string()),
         to,
         min_priority: file.smtp_min_priority.unwrap_or(0),
+        starttls: file.smtp_starttls.unwrap_or(true),
     })
 }
 

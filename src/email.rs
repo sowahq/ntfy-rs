@@ -103,12 +103,28 @@ fn build_body(msg: &Message) -> String {
 fn build_transport(
     smtp: &SmtpConfig,
 ) -> anyhow::Result<AsyncSmtpTransport<Tokio1Executor>> {
-    let creds = Credentials::new(smtp.username.clone(), smtp.password.clone());
-
-    let transport = AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&smtp.host)?
-        .port(smtp.port)
-        .credentials(creds)
-        .build();
+    let transport = if smtp.starttls {
+        let mut builder = AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&smtp.host)?
+            .port(smtp.port);
+        if !smtp.username.is_empty() {
+            let creds = Credentials::new(smtp.username.clone(), smtp.password.clone());
+            builder = builder.credentials(creds);
+        }
+        builder.build()
+    } else {
+        // For local testing without TLS (e.g. Mailpit), use Opportunistic TLS —
+        // it will attempt STARTTLS but fall back to plaintext if the server
+        // doesn't support it.
+        let tls_params = lettre::transport::smtp::client::TlsParameters::new(smtp.host.clone())?;
+        let mut builder = AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&smtp.host)?
+            .port(smtp.port)
+            .tls(lettre::transport::smtp::client::Tls::Opportunistic(tls_params));
+        if !smtp.username.is_empty() {
+            let creds = Credentials::new(smtp.username.clone(), smtp.password.clone());
+            builder = builder.credentials(creds);
+        }
+        builder.build()
+    };
 
     Ok(transport)
 }

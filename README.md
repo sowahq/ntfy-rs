@@ -168,6 +168,7 @@ listen_unix  = "/run/ntfy-rs/ntfy-rs.sock"  # optional
 # persistent WebSocket, not APNs.)
 base_url     = "https://ntfy.example.com:443"
 cache_file   = "/var/lib/ntfy-rs/cache.db"
+attachment_cache_dir = "/var/lib/ntfy-rs/attachments"
 
 # How long messages are retained (seconds). Default: 43200 (12 hours)
 cache_duration = 43200

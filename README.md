@@ -295,7 +295,7 @@ curl -H "Title: Server down" \
 |---|---|---|
 | `X-Title` | `Title`, `t` | Message title |
 | `X-Priority` | `Priority`, `prio`, `p` | `1`/`min` · `2`/`low` · `3`/`default` · `4`/`high` · `5`/`urgent` |
-| `X-Tags` | `Tags`, `tag`, `ta` | Comma-separated tags |
+| `X-Tags` | `Tags`, `tag`, `ta` | Comma-separated emoji shortcodes (auto-resolved to unicode, e.g. `white_check_mark` → ✅) |
 | `X-Click` | `Click` | URL to open on click |
 | `X-Icon` | `Icon` | Icon URL |
 | `X-Markdown` | `Markdown`, `md` | `1` to render body as Markdown |
@@ -642,7 +642,7 @@ ntfy-rs is a ground-up Rust reimplementation targeting a smaller binary and zero
 | Multi-topic subscriptions | ✅ | ✅ |
 | Poll mode (`?poll=1`, `?since=`) | ✅ | ✅ |
 | Scheduled / delayed delivery (`X-Delay`) | ✅ | ✅ |
-| Title, priority, tags, click URL, icon | ✅ | ✅ |
+| Title, priority, tags (emoji shortcode resolution), click URL, icon | ✅ | ✅ |
 | Markdown rendering (`X-Markdown`) | ✅ | ✅ |
 | Action buttons (`X-Actions`) | ✅ | ✅ |
 | File attachments (local disk storage) | ✅ | ✅ |

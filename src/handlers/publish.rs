@@ -81,7 +81,8 @@ pub async fn publish(
         msg.priority = parse_priority(&v);
     }
     if let Some(v) = param(&headers, &params, &["x-tags", "tags", "tag", "ta"]) {
-        msg.tags = v.split(',').map(|s| s.trim().to_string()).collect();
+        let raw_tags: Vec<String> = v.split(',').map(|s| s.trim().to_string()).collect();
+        msg.tags = crate::emoji::resolve_tags(&raw_tags);
     }
     if let Some(v) = param(&headers, &params, &["x-click", "click"]) {
         msg.click = v;

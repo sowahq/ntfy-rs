@@ -2,6 +2,7 @@ mod auth;
 pub mod config;
 mod db;
 mod email;
+mod emoji;
 mod error;
 mod handlers;
 mod manager;

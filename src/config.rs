@@ -335,3 +335,133 @@ pub fn load_file_config(path: &PathBuf) -> anyhow::Result<FileConfig> {
     let cfg: FileConfig = toml::from_str(&text)?;
     Ok(cfg)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_cli() -> ServeArgs {
+        ServeArgs {
+            config: PathBuf::from("server.toml"),
+            listen_http: None,
+            cache_file: None,
+            log_level: "info".to_string(),
+            base_url: None,
+            listen_https: None,
+            cert_file: None,
+            key_file: None,
+            listen_unix: None,
+            upstream_base_url: None,
+            upstream_access_token: None,
+        }
+    }
+
+    // ── resolve_smtp ────────────────────────────────────────────────────
+
+    #[test]
+    fn test_resolve_smtp_disabled_when_no_host() {
+        let file = FileConfig::default();
+        assert!(resolve_smtp(&file).is_none());
+    }
+
+    #[test]
+    fn test_resolve_smtp_disabled_when_no_to() {
+        let mut file = FileConfig::default();
+        file.smtp_host = Some("smtp.example.com".to_string());
+        file.smtp_to = Some(vec![]);
+        assert!(resolve_smtp(&file).is_none());
+    }
+
+    #[test]
+    fn test_resolve_smtp_defaults() {
+        let mut file = FileConfig::default();
+        file.smtp_host = Some("smtp.example.com".to_string());
+        file.smtp_to = Some(vec!["user@example.com".to_string()]);
+
+        let smtp = resolve_smtp(&file).unwrap();
+        assert_eq!(smtp.host, "smtp.example.com");
+        assert_eq!(smtp.port, 587);
+        assert_eq!(smtp.username, "");
+        assert_eq!(smtp.password, "");
+        assert_eq!(smtp.from, "ntfy-rs");
+        assert_eq!(smtp.min_priority, 0);
+        assert!(smtp.starttls);
+    }
+
+    #[test]
+    fn test_resolve_smtp_starttls_false() {
+        let mut file = FileConfig::default();
+        file.smtp_host = Some("localhost".to_string());
+        file.smtp_to = Some(vec!["test@localhost".to_string()]);
+        file.smtp_starttls = Some(false);
+
+        let smtp = resolve_smtp(&file).unwrap();
+        assert!(!smtp.starttls);
+    }
+
+    #[test]
+    fn test_resolve_smtp_password_from_field() {
+        let mut file = FileConfig::default();
+        file.smtp_host = Some("smtp.example.com".to_string());
+        file.smtp_to = Some(vec!["user@example.com".to_string()]);
+        file.smtp_password = Some("field-password".to_string());
+
+        let smtp = resolve_smtp(&file).unwrap();
+        assert_eq!(smtp.password, "field-password");
+    }
+
+    // ── kebab-case TOML parsing ────────────────────────────────────────
+
+    #[test]
+    fn test_kebab_case_toml_parsing() {
+        let toml = r#"
+smtp-host = "smtp.example.com"
+smtp-port = 2525
+smtp-username = "user"
+smtp-password = "pass"
+smtp-from = "ntfy-rs <test@example.com>"
+smtp-to = ["a@example.com", "b@example.com"]
+smtp-min-priority = 3
+smtp-starttls = false
+"#;
+        let cfg: FileConfig = toml::from_str(toml).unwrap();
+        assert_eq!(cfg.smtp_host.as_deref(), Some("smtp.example.com"));
+        assert_eq!(cfg.smtp_port, Some(2525));
+        assert_eq!(cfg.smtp_username.as_deref(), Some("user"));
+        assert_eq!(cfg.smtp_password.as_deref(), Some("pass"));
+        assert_eq!(cfg.smtp_from.as_deref(), Some("ntfy-rs <test@example.com>"));
+        assert_eq!(cfg.smtp_to.as_ref().unwrap().len(), 2);
+        assert_eq!(cfg.smtp_min_priority, Some(3));
+        assert_eq!(cfg.smtp_starttls, Some(false));
+    }
+
+    // ── Config::resolve ────────────────────────────────────────────────
+
+    #[test]
+    fn test_config_resolve_defaults() {
+        let file = FileConfig::default();
+        let cli = make_cli();
+        let config = Config::resolve(file, &cli);
+
+        assert_eq!(config.listen_http, DEFAULT_LISTEN_HTTP);
+        assert_eq!(config.cache_duration_secs, DEFAULT_CACHE_DURATION_SECS);
+        assert_eq!(config.message_size_limit, DEFAULT_MESSAGE_SIZE_LIMIT);
+        assert!(!config.auth_enabled);
+        assert!(config.smtp.is_none());
+    }
+
+    #[test]
+    fn test_config_resolve_cli_overrides_file() {
+        let mut file = FileConfig::default();
+        file.listen_http = Some(":8080".to_string());
+        file.base_url = Some("http://file.example.com".to_string());
+
+        let mut cli = make_cli();
+        cli.listen_http = Some(":9090".to_string());
+        cli.base_url = Some("http://cli.example.com".to_string());
+
+        let config = Config::resolve(file, &cli);
+        assert_eq!(config.listen_http, ":9090");
+        assert_eq!(config.base_url, "http://cli.example.com");
+    }
+}

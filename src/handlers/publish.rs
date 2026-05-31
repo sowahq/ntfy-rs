@@ -600,4 +600,160 @@ mod tests {
         let actions = parse_actions("view");
         assert!(actions.is_empty());
     }
+
+    // ── detect_attachment ────────────────────────────────────────────────
+
+    #[test]
+    fn test_detect_attachment_filename_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-filename", "photo.jpg".parse().unwrap());
+        assert!(detect_attachment(&headers, &HashMap::new()));
+    }
+
+    #[test]
+    fn test_detect_attachment_filename_query() {
+        let mut params = HashMap::new();
+        params.insert("filename".to_string(), "photo.jpg".to_string());
+        assert!(detect_attachment(&HeaderMap::new(), &params));
+    }
+
+    #[test]
+    fn test_detect_attachment_content_type_image() {
+        let mut headers = HeaderMap::new();
+        headers.insert("content-type", "image/png".parse().unwrap());
+        assert!(detect_attachment(&headers, &HashMap::new()));
+    }
+
+    #[test]
+    fn test_detect_attachment_content_type_text() {
+        let mut headers = HeaderMap::new();
+        headers.insert("content-type", "text/plain".parse().unwrap());
+        assert!(!detect_attachment(&headers, &HashMap::new()));
+    }
+
+    #[test]
+    fn test_detect_attachment_content_type_markdown() {
+        let mut headers = HeaderMap::new();
+        headers.insert("content-type", "text/markdown".parse().unwrap());
+        assert!(!detect_attachment(&headers, &HashMap::new()));
+    }
+
+    #[test]
+    fn test_detect_attachment_content_type_form() {
+        let mut headers = HeaderMap::new();
+        headers.insert("content-type", "application/x-www-form-urlencoded".parse().unwrap());
+        assert!(!detect_attachment(&headers, &HashMap::new()));
+    }
+
+    #[test]
+    fn test_detect_attachment_no_indicators() {
+        assert!(!detect_attachment(&HeaderMap::new(), &HashMap::new()));
+    }
+
+    // ── parse_priority ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_parse_priority_numeric() {
+        assert_eq!(parse_priority("1"), 1);
+        assert_eq!(parse_priority("2"), 2);
+        assert_eq!(parse_priority("3"), 3);
+        assert_eq!(parse_priority("4"), 4);
+        assert_eq!(parse_priority("5"), 5);
+    }
+
+    #[test]
+    fn test_parse_priority_words() {
+        assert_eq!(parse_priority("min"), 1);
+        assert_eq!(parse_priority("low"), 2);
+        assert_eq!(parse_priority("default"), 3);
+        assert_eq!(parse_priority("high"), 4);
+        assert_eq!(parse_priority("urgent"), 5);
+        assert_eq!(parse_priority("max"), 5);
+    }
+
+    #[test]
+    fn test_parse_priority_case_insensitive() {
+        assert_eq!(parse_priority("HIGH"), 4);
+        assert_eq!(parse_priority("Urgent"), 5);
+    }
+
+    #[test]
+    fn test_parse_priority_unknown_defaults_to_3() {
+        assert_eq!(parse_priority("unknown"), 3);
+        assert_eq!(parse_priority("0"), 3);
+        assert_eq!(parse_priority("6"), 3);
+    }
+
+    // ── parse_duration_str ──────────────────────────────────────────────
+
+    #[test]
+    fn test_parse_duration_str_seconds() {
+        assert_eq!(parse_duration_str("30s"), Some(30));
+    }
+
+    #[test]
+    fn test_parse_duration_str_minutes() {
+        assert_eq!(parse_duration_str("5m"), Some(300));
+    }
+
+    #[test]
+    fn test_parse_duration_str_hours() {
+        assert_eq!(parse_duration_str("2h"), Some(7200));
+    }
+
+    #[test]
+    fn test_parse_duration_str_days() {
+        assert_eq!(parse_duration_str("1d"), Some(86400));
+    }
+
+    #[test]
+    fn test_parse_duration_str_invalid() {
+        assert_eq!(parse_duration_str("abc"), None);
+        assert_eq!(parse_duration_str("5x"), None);
+    }
+
+    // ── is_truthy ───────────────────────────────────────────────────────
+
+    #[test]
+    fn test_is_truthy() {
+        assert!(is_truthy("1"));
+        assert!(is_truthy("true"));
+        assert!(is_truthy("yes"));
+        assert!(is_truthy("True"));
+        assert!(is_truthy("YES"));
+        assert!(!is_truthy("0"));
+        assert!(!is_truthy("false"));
+        assert!(!is_truthy("no"));
+    }
+
+    // ── param ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_param_header_priority() {
+        let mut headers = HeaderMap::new();
+        headers.insert("title", "from-header".parse().unwrap());
+        let mut query = HashMap::new();
+        query.insert("title".to_string(), "from-query".to_string());
+        assert_eq!(param(&headers, &query, &["title"]), Some("from-header".to_string()));
+    }
+
+    #[test]
+    fn test_param_fallback_to_query() {
+        let headers = HeaderMap::new();
+        let mut query = HashMap::new();
+        query.insert("title".to_string(), "from-query".to_string());
+        assert_eq!(param(&headers, &query, &["title"]), Some("from-query".to_string()));
+    }
+
+    #[test]
+    fn test_param_not_found() {
+        assert_eq!(param(&HeaderMap::new(), &HashMap::new(), &["title"]), None);
+    }
+
+    #[test]
+    fn test_param_multiple_names() {
+        let mut headers = HeaderMap::new();
+        headers.insert("t", "short".parse().unwrap());
+        assert_eq!(param(&headers, &HashMap::new(), &["x-title", "title", "t"]), Some("short".to_string()));
+    }
 }

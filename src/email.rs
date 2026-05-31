@@ -128,3 +128,78 @@ fn build_transport(
 
     Ok(transport)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::message::Message;
+
+    fn make_msg() -> Message {
+        Message::new_message("test-topic", "Hello world".to_string())
+    }
+
+    // ── build_subject ───────────────────────────────────────────────────
+
+    #[test]
+    fn test_build_subject_with_title() {
+        let mut msg = make_msg();
+        msg.title = "Deploy done".to_string();
+        assert_eq!(build_subject(&msg), "[ntfy/test-topic] Deploy done");
+    }
+
+    #[test]
+    fn test_build_subject_without_title() {
+        let msg = make_msg();
+        assert_eq!(build_subject(&msg), "[ntfy/test-topic]");
+    }
+
+    // ── build_body ──────────────────────────────────────────────────────
+
+    #[test]
+    fn test_build_body_basic() {
+        let msg = make_msg();
+        let body = build_body(&msg);
+        assert!(body.contains("Hello world"));
+        assert!(body.contains("Topic: test-topic"));
+        assert!(body.contains("Priority: 0"));
+    }
+
+    #[test]
+    fn test_build_body_with_tags() {
+        let mut msg = make_msg();
+        msg.tags = vec!["✅".to_string(), "🚨".to_string()];
+        let body = build_body(&msg);
+        assert!(body.contains("Tags: ✅, 🚨"));
+    }
+
+    #[test]
+    fn test_build_body_with_click() {
+        let mut msg = make_msg();
+        msg.click = "https://example.com".to_string();
+        let body = build_body(&msg);
+        assert!(body.contains("Link: https://example.com"));
+    }
+
+    #[test]
+    fn test_build_body_with_attachment() {
+        let mut msg = make_msg();
+        msg.attachment = Some(crate::message::Attachment {
+            name: "photo.jpg".to_string(),
+            content_type: "image/jpeg".to_string(),
+            size: 12345,
+            expires: 0,
+            url: "https://example.com/file/abc".to_string(),
+        });
+        let body = build_body(&msg);
+        assert!(body.contains("Attachment: photo.jpg (https://example.com/file/abc)"));
+    }
+
+    #[test]
+    fn test_build_body_empty_message() {
+        let msg = Message::new_message("test-topic", String::new());
+        let body = build_body(&msg);
+        assert!(!body.contains("Tags:"));
+        assert!(!body.contains("Link:"));
+        assert!(body.contains("Topic: test-topic"));
+    }
+}

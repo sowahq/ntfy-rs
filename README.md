@@ -629,6 +629,12 @@ sudo setcap 'cap_net_bind_service=+ep' /usr/local/bin/ntfy-rs
 
 For production, the recommended approach on all platforms is to run ntfy-rs on its default port behind a reverse proxy (nginx, Caddy, Traefik) that handles TLS and listens on 80/443.
 
+### Production security notes
+
+- **CORS:** ntfy-rs uses permissive CORS by default (all origins allowed). In production, configure your reverse proxy to override CORS headers and restrict allowed origins.
+- **Metrics endpoint:** The `/metrics` endpoint is unauthenticated and exposes message counts and topic activity. Restrict access via your reverse proxy or firewall rules.
+- **Auth file:** When `auth-file` is set, all publish/subscribe and account endpoints require authentication. Admin endpoints additionally require an admin-role user.
+
 ---
 
 ## Relation to ntfy (Go)

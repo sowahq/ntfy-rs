@@ -31,12 +31,25 @@ pub async fn serve_file(
         .await
         .map_err(|e| AppError::Internal(format!("failed to read attachment: {e}")))?;
 
-    // Build a safe Content-Disposition filename (strip path separators).
-    let safe_name: String = record
-        .name
-        .chars()
-        .map(|c| if c == '/' || c == '\\' { '_' } else { c })
-        .collect();
+    // Build a safe Content-Disposition filename.
+    // Strip path separators, quotes, null bytes, and leading dots (hidden files / traversal).
+    let safe_name: String = {
+        let mut s: String = record
+            .name
+            .chars()
+            .map(|c| {
+                if c == '/' || c == '\\' || c == '"' || c == '\0' {
+                    '_'
+                } else {
+                    c
+                }
+            })
+            .collect();
+        while s.starts_with('.') {
+            s.remove(0);
+        }
+        s
+    };
 
     let content_type = if record.content_type.is_empty() {
         "application/octet-stream".to_string()

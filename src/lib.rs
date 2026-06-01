@@ -207,9 +207,18 @@ async fn run_server(
     let state = AppState::new(config.clone(), db, auth_db, vapid);
 
     // Install Prometheus metrics recorder.
-    let metrics_handle = metrics_exporter_prometheus::PrometheusBuilder::new()
+    // Non-fatal on restart: the recorder is a process-global singleton
+    // that can only be installed once, so a second call returns an error.
+    let metrics_handle = match metrics_exporter_prometheus::PrometheusBuilder::new()
         .install_recorder()
-        .map_err(|e| anyhow::anyhow!("failed to install Prometheus recorder: {e}"))?;
+    {
+        Ok(handle) => handle,
+        Err(_) => {
+            let (_recorder, handle) =
+                metrics_exporter_prometheus::PrometheusBuilder::new().build_recorder();
+            handle
+        }
+    };
 
     // Background manager.
     {

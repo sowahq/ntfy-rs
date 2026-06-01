@@ -730,3 +730,5 @@ Features listed as "not yet" in the table above (PostgreSQL, SMTP ingress) are p
 Dual-licensed under [Apache-2.0](LICENSE.Apache-2.0) and [GPL-2.0](LICENSE.GPL-2.0). You may use this software under the terms of either license, at your option.
 
 This project is not affiliated with, endorsed by, or connected to the Rust Project or the Rust Foundation.
+
+ntfy-rs is an independent reimplementation and is not affiliated with or endorsed by the original [ntfy](https://ntfy.sh) project (binwiederhier/ntfy).

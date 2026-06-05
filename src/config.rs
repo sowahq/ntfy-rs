@@ -30,7 +30,7 @@ pub const DEFAULT_ATTACHMENT_EXPIRY_SECS: u64      = 3 * 60 * 60;            // 
 
 /// Top-level CLI. Use `ntfy-rs serve` to start the server.
 #[derive(Parser, Debug)]
-#[command(name = "ntfy-rs", about = "Lightweight pub/sub notification server")]
+#[command(name = "ntfy-rs", about = "Lightweight pub/sub notification server", version)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,

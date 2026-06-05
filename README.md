@@ -670,6 +670,7 @@ ntfy-rs is a ground-up Rust reimplementation targeting a smaller binary and zero
 | Basic auth & Bearer token | ✅ | ✅ |
 | Per-topic ACL | ✅ | ✅ |
 | Anonymous access tiers (read-write / read-only / deny-all) | ✅ | ✅ |
+| In-memory ACL cache (`auth-access-cache`) | ✅ | ❌ |
 | User self-service API (`/v1/account`) | ✅ | ✅ |
 | Admin user management API (`/v1/admin`) | ✅ | ✅ |
 | Bearer token creation & revocation | ✅ | ✅ |
@@ -687,6 +688,7 @@ ntfy-rs is a ground-up Rust reimplementation targeting a smaller binary and zero
 | Config file | ✅ (YAML) | ✅ (TOML) |
 | Environment variables | ✅ | ✅ |
 | CLI flags | ✅ | ✅ |
+| `--version` flag | ✅ | ✅ |
 | Prometheus metrics endpoint | ✅ | ✅ |
 | Web app (React SPA) | ✅ | ❌ |
 | Embeddable library | ❌ | ✅ |

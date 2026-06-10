@@ -4,6 +4,11 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build and release (e.g. v0.1.0-beta.6)'
+        required: true
 
 permissions:
   contents: write
@@ -13,7 +18,37 @@ env:
 
 jobs:
   build:
-    runs-on: windows-latest
+    name: Build ${{ matrix.artifact }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: ntfy-rs-windows-x86_64.exe
+            binary: target/x86_64-pc-windows-msvc/release/ntfy-rs.exe
+            cargo: cargo
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            artifact: ntfy-rs-linux-x86_64
+            binary: target/x86_64-unknown-linux-musl/release/ntfy-rs
+            cargo: cross
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            artifact: ntfy-rs-linux-aarch64
+            binary: target/aarch64-unknown-linux-musl/release/ntfy-rs
+            cargo: cross
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: ntfy-rs-macos-aarch64
+            binary: target/aarch64-apple-darwin/release/ntfy-rs
+            cargo: cargo
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact: ntfy-rs-macos-x86_64
+            binary: target/x86_64-apple-darwin/release/ntfy-rs
+            cargo: cargo
 
     steps:
       - name: Checkout repository
@@ -21,18 +56,33 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install cross
+        if: matrix.cargo == 'cross'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
 
       - name: Build release binary
-        run: cargo build --release
+        run: ${{ matrix.cargo }} build --release --target ${{ matrix.target }}
 
-      - name: Create release
+      - name: Rename binary
+        shell: bash
+        run: cp ${{ matrix.binary }} ${{ matrix.artifact }}
+
+      - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
-          files: target/release/ntfy-rs.exe
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: ${{ matrix.artifact }}
           draft: true
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          prerelease: ${{ contains(github.event.inputs.tag || github.ref_name, '-') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

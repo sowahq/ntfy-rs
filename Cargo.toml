@@ -97,7 +97,7 @@ base64 = "0.22.1"
 # Outbound HTTP for upstream poll-forward + web push. default-features=false
 # drops HTTP/2 (h2), HTTP/3 (quinn/QUIC) and native-tls — this server only does
 # HTTP/1.1 POST. rustls-tls keeps TLS via rustls (shared with the TLS feature).
-reqwest = { version = "0.13.3", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.13.3", default-features = false, features = ["json", "rustls"] }
 sha2 = "0.11.0"
 
 # Web Push: VAPID (RFC 8292) + ECE/aes128gcm (RFC 8188/8291) — pure Rust, no OpenSSL (optional)

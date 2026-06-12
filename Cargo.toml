@@ -15,7 +15,13 @@ name = "ntfy-rs"
 path = "src/main.rs"
 
 [features]
-default = ["email", "metrics", "tls", "webpush", "auth", "unix-socket", "config-file"]
+# Lean default for low-resource hosts: auth + web push only, plus the TLS
+# listener (zero runtime cost when listen_https is unset) and the config-file
+# CLI needed to run the standalone binary. email / metrics / unix-socket are
+# opt-in — enable with e.g. `--features metrics`.
+default = ["auth", "webpush", "tls", "config-file"]
+# Full build with every transport/observability feature.
+full = ["email", "metrics", "tls", "webpush", "auth", "unix-socket", "config-file"]
 
 # Outbound email notifications via SMTP
 email = ["dep:lettre"]
@@ -39,8 +45,11 @@ unix-socket = ["dep:hyper", "dep:hyper-util"]
 config-file = ["dep:config", "dep:clap"]
 
 [dependencies]
-# Async runtime
-tokio = { version = "1", features = ["full"] }
+# Async runtime — only the features actually used (drops process/io-std/etc.
+# pulled in by "full"). rt-multi-thread is required for block_in_place (bcrypt).
+tokio = { version = "1", default-features = false, features = [
+    "rt-multi-thread", "macros", "net", "time", "sync", "signal", "fs",
+] }
 
 # HTTP server
 axum = { version = "0.7", features = ["ws"] }
@@ -85,9 +94,11 @@ toml = "0.8"
 futures-util = "0.3"
 tokio-stream = { version = "0.1", features = ["sync"] }
 base64 = "0.22.1"
-reqwest = { version = "0.13.3", features = ["json"] }
+# Outbound HTTP for upstream poll-forward + web push. default-features=false
+# drops HTTP/2 (h2), HTTP/3 (quinn/QUIC) and native-tls — this server only does
+# HTTP/1.1 POST. rustls-tls keeps TLS via rustls (shared with the TLS feature).
+reqwest = { version = "0.13.3", default-features = false, features = ["json", "rustls-tls"] }
 sha2 = "0.11.0"
-once_cell = "1"
 
 # Web Push: VAPID (RFC 8292) + ECE/aes128gcm (RFC 8188/8291) — pure Rust, no OpenSSL (optional)
 p256 = { version = "0.13", features = ["ecdh", "ecdsa", "pkcs8"], optional = true }

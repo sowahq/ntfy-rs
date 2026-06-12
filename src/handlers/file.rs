@@ -32,13 +32,14 @@ pub async fn serve_file(
         .map_err(|e| AppError::Internal(format!("failed to read attachment: {e}")))?;
 
     // Build a safe Content-Disposition filename.
-    // Strip path separators, quotes, null bytes, and leading dots (hidden files / traversal).
+    // Strip path separators, quotes, null bytes, control chars (CR/LF header
+    // injection), and leading dots (hidden files / traversal).
     let safe_name: String = {
         let mut s: String = record
             .name
             .chars()
             .map(|c| {
-                if c == '/' || c == '\\' || c == '"' || c == '\0' {
+                if c == '/' || c == '\\' || c == '"' || c == '\0' || c.is_control() {
                     '_'
                 } else {
                     c
@@ -51,13 +52,28 @@ pub async fn serve_file(
         s
     };
 
-    let content_type = if record.content_type.is_empty() {
-        "application/octet-stream".to_string()
+    // The stored content_type comes verbatim from the uploader's request header,
+    // so it is attacker-controlled. Serving an attacker-supplied type `inline`
+    // (e.g. image/svg+xml or text/html) yields stored XSS in the server's own
+    // origin. Only render `inline` for a hardcoded allowlist of inert raster
+    // image types; everything else is forced to `attachment` download.
+    let raw_type = if record.content_type.is_empty() {
+        "application/octet-stream"
     } else {
-        record.content_type
+        record.content_type.as_str()
     };
+    let type_lower = raw_type.to_ascii_lowercase();
+    let base_type = type_lower
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim();
+    let inline_ok = matches!(
+        base_type,
+        "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/bmp"
+    );
 
-    let disposition = if content_type.starts_with("image/") {
+    let disposition = if inline_ok {
         format!("inline; filename=\"{safe_name}\"")
     } else {
         format!("attachment; filename=\"{safe_name}\"")
@@ -66,14 +82,10 @@ pub async fn serve_file(
     let response = (
         StatusCode::OK,
         [
-            (
-                header::CONTENT_TYPE,
-                content_type,
-            ),
-            (
-                header::CONTENT_DISPOSITION,
-                disposition,
-            ),
+            (header::CONTENT_TYPE, raw_type.to_string()),
+            (header::CONTENT_DISPOSITION, disposition),
+            // Stop browsers MIME-sniffing toward an executable type.
+            (header::X_CONTENT_TYPE_OPTIONS, "nosniff".to_string()),
         ],
         bytes,
     )

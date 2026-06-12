@@ -40,15 +40,6 @@ pub struct CreateTokenRequest {
     pub expires: Option<i64>,
 }
 
-#[derive(Deserialize)]
-pub struct SetAccessRequest {
-    pub topic: String,
-    #[serde(default)]
-    pub read: bool,
-    #[serde(default)]
-    pub write: bool,
-}
-
 #[derive(Serialize)]
 pub struct TokenResponse {
     pub token: String,
@@ -165,18 +156,6 @@ pub async fn get_access(
     Ok(Json(json!({ "access": acl })))
 }
 
-/// POST /v1/account/access — grant self read/write on a topic.
-pub async fn set_access(
-    State(state): State<AppState>,
-    Extension(auth_user): Extension<AuthUser>,
-    Json(body): Json<SetAccessRequest>,
-) -> Result<impl IntoResponse, AppError> {
-    let user = require_user(&auth_user)?;
-    let conn = state.effective_auth_db().get()?;
-    db_users::acl_set(&conn, &user.id, &body.topic, body.read, body.write)?;
-    Ok(StatusCode::OK)
-}
-
 /// DELETE /v1/account/access/:topic — remove own ACL entry for a topic.
 pub async fn delete_access(
     State(state): State<AppState>,
@@ -196,10 +175,13 @@ pub fn require_user(auth_user: &AuthUser) -> Result<&crate::auth::User, AppError
     auth_user.user.as_ref().ok_or(AppError::Unauthorized)
 }
 
+/// bcrypt work factor. 12 is the modern baseline for 2024+ hardware.
+const BCRYPT_COST: u32 = 12;
+
 pub fn bcrypt_hash(password: &str) -> Result<String, AppError> {
     let p = password.to_string();
     tokio::task::block_in_place(|| {
-        bcrypt::hash(&p, 10).map_err(|e| AppError::Internal(e.to_string()))
+        bcrypt::hash(&p, BCRYPT_COST).map_err(|e| AppError::Internal(e.to_string()))
     })
 }
 

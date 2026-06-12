@@ -136,6 +136,21 @@ pub struct FileConfig {
     pub keepalive_interval: Option<u64>,
     pub manager_interval: Option<u64>,
 
+    /// Number of tokio worker threads. Lower = less memory and fewer threads on
+    /// constrained hosts. 0 = use one per CPU core (tokio default). Default: 2.
+    pub worker_threads: Option<usize>,
+
+    /// Trust the `X-Forwarded-For` header for client IP / rate-limit keying.
+    /// Only enable when this server sits behind a reverse proxy you control —
+    /// otherwise any client can spoof the header and bypass rate limits.
+    /// Default: false (use the real peer address).
+    pub behind_proxy: Option<bool>,
+
+    /// Allowed CORS origins for browser clients (e.g. ["https://app.example.com"]).
+    /// When absent or empty, cross-origin browser requests are not permitted
+    /// (same-origin only). Never reflects arbitrary origins.
+    pub cors_allow_origin: Option<Vec<String>>,
+
     /// When set, auth is enabled and the SQLite auth DB is stored here.
     /// When absent, auth is disabled and all requests are allowed.
     #[cfg(feature = "auth")]
@@ -222,6 +237,14 @@ pub struct Config {
     pub subscription_limit: u32,
     pub keepalive_secs: u64,
     pub manager_interval_secs: u64,
+
+    /// tokio worker thread count (0 = one per CPU core).
+    pub worker_threads: usize,
+
+    /// Trust `X-Forwarded-For` for client IP. Only safe behind a trusted proxy.
+    pub behind_proxy: bool,
+    /// Allowed CORS origins. Empty = same-origin only (no cross-origin reads).
+    pub cors_allow_origins: Vec<String>,
 
     /// Auth is active only when auth_file is set.
     #[cfg(feature = "auth")]
@@ -335,6 +358,9 @@ impl Config {
             manager_interval_secs: file
                 .manager_interval
                 .unwrap_or(DEFAULT_MANAGER_INTERVAL_SECS),
+            worker_threads: file.worker_threads.unwrap_or(2),
+            behind_proxy: file.behind_proxy.unwrap_or(false),
+            cors_allow_origins: file.cors_allow_origin.unwrap_or_default(),
             #[cfg(feature = "auth")]
             auth_enabled,
             #[cfg(feature = "auth")]

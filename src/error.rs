@@ -70,10 +70,20 @@ impl AppError {
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let status = self.status();
+        // Never leak internal error details (SQLite text, filesystem paths,
+        // pool errors) to the client. Log them server-side, return a generic
+        // message. All other variants carry no sensitive data.
+        let message = match &self {
+            AppError::Internal(detail) => {
+                tracing::error!(error = %detail, "internal error");
+                "internal error".to_string()
+            }
+            other => other.to_string(),
+        };
         let body = json!({
             "code":    self.code(),
             "http":    status.as_u16(),
-            "error":   self.to_string(),
+            "error":   message,
             "link":    "https://ntfy.sh/docs/publish/#response-codes",
         });
         (status, Json(body)).into_response()

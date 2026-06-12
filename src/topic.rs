@@ -6,8 +6,10 @@ use tokio::sync::broadcast;
 
 /// Capacity of the per-topic broadcast channel.
 /// Slow subscribers that fall more than this many messages behind receive a
-/// `RecvError::Lagged` and must reconnect.
-const BROADCAST_CAPACITY: usize = 64;
+/// `RecvError::Lagged` and must reconnect (then replay from the SQLite cache).
+/// tokio pre-allocates all slots on channel creation, so this is also the
+/// fixed memory cost per live topic — kept modest for low-memory hosts.
+const BROADCAST_CAPACITY: usize = 32;
 
 /// How long a topic with no subscribers and no recent activity is considered
 /// stale and eligible for removal from the map.

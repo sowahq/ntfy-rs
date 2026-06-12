@@ -1,10 +1,12 @@
 #[cfg(feature = "config-file")]
 use clap::Parser;
+#[cfg(feature = "config-file")]
 use tracing_subscriber::{fmt, EnvFilter};
 
 #[cfg(feature = "config-file")]
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
+    // Parse config synchronously *before* building the runtime so the worker
+    // thread count can be sized from config (lower = less memory).
     let cli = ntfy_rs::config::Cli::parse();
 
     let serve_args = match cli.command {
@@ -19,8 +21,9 @@ async fn main() -> anyhow::Result<()> {
     let cfg = ntfy_rs::Config::resolve(file_cfg, &serve_args);
 
     tracing::info!(
-        listen_http  = %cfg.listen_http,
-        auth         = cfg.auth_enabled,
+        listen_http    = %cfg.listen_http,
+        auth           = cfg.auth_enabled,
+        worker_threads = cfg.worker_threads,
         "starting ntfy-rs"
     );
 
@@ -30,14 +33,17 @@ async fn main() -> anyhow::Result<()> {
     #[cfg(feature = "unix-socket")]
     tracing::info!(listen_unix = ?cfg.listen_unix, "unix socket configured");
 
-    let handle = ntfy_rs::start_async(cfg).await?;
+    let runtime = ntfy_rs::build_runtime(cfg.worker_threads)?;
+    runtime.block_on(async move {
+        let handle = ntfy_rs::start_async(cfg).await?;
 
-    // Wait for Ctrl-C, then shut down gracefully.
-    tokio::signal::ctrl_c().await?;
-    tracing::info!("shutting down");
-    handle.shutdown();
+        // Wait for Ctrl-C, then shut down gracefully.
+        tokio::signal::ctrl_c().await?;
+        tracing::info!("shutting down");
+        handle.shutdown();
 
-    Ok(())
+        Ok::<(), anyhow::Error>(())
+    })
 }
 
 #[cfg(not(feature = "config-file"))]

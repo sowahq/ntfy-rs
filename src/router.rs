@@ -18,7 +18,7 @@ use axum::routing::delete;
 use metrics_exporter_prometheus::PrometheusHandle;
 #[cfg(feature = "auth")]
 use std::sync::Arc;
-use tower_http::{cors::CorsLayer, trace::TraceLayer};
+use tower_http::{cors::{AllowOrigin, CorsLayer}, trace::TraceLayer};
 
 #[cfg(feature = "metrics")]
 pub fn build(state: AppState, metrics_handle: PrometheusHandle) -> Router {
@@ -32,6 +32,7 @@ pub fn build(state: AppState) -> Router {
 
 fn build_inner(state: AppState, _metrics_handle: Option<MetricsHandle>) -> Router {
     let body_limit = state.config.attachment_file_size_limit as usize;
+    let cors = build_cors(&state.config.cors_allow_origins);
 
     #[cfg(feature = "auth")]
     let auth_layer = auth::make_auth_layer(
@@ -61,7 +62,10 @@ fn build_inner(state: AppState, _metrics_handle: Option<MetricsHandle>) -> Route
             .route("/v1/account/password",           put(account::change_password))
             .route("/v1/account/token",              post(account::create_token))
             .route("/v1/account/token/:token",       delete(account::delete_token))
-            .route("/v1/account/access",             get(account::get_access).post(account::set_access))
+            // GET lists own ACL; granting is admin-only (see /v1/admin/.../access).
+            // A self-service POST here would let any user grant themselves access
+            // to any topic, defeating ACL enforcement entirely.
+            .route("/v1/account/access",             get(account::get_access))
             .route("/v1/account/access/:topic",      delete(account::delete_access))
             // ── admin ─────────────────────────────────────────────────────────
             .route("/v1/admin/users",                          get(admin::list_users).post(admin::create_user))
@@ -119,9 +123,34 @@ fn build_inner(state: AppState, _metrics_handle: Option<MetricsHandle>) -> Route
     let app = app.layer(axum::extract::Extension(_metrics_handle.unwrap()));
 
     app
-        .layer(CorsLayer::permissive())
+        .layer(cors)
         .layer(TraceLayer::new_for_http())
         .layer(axum::extract::DefaultBodyLimit::max(body_limit))
+}
+
+/// Build the CORS layer from the configured allowlist.
+///
+/// An empty allowlist means same-origin only: no `Access-Control-Allow-Origin`
+/// is emitted, so browsers block cross-origin reads. Configured origins are
+/// matched exactly — arbitrary origins are never reflected (the previous
+/// `CorsLayer::permissive()` reflected `*`, exposing authenticated endpoints to
+/// any website).
+fn build_cors(allow_origins: &[String]) -> CorsLayer {
+    use axum::http::{HeaderValue, Method, header};
+
+    let base = CorsLayer::new()
+        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
+        .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE]);
+
+    if allow_origins.is_empty() {
+        return base; // no origins allowed → same-origin only
+    }
+
+    let origins: Vec<HeaderValue> = allow_origins
+        .iter()
+        .filter_map(|o| o.parse::<HeaderValue>().ok())
+        .collect();
+    base.allow_origin(AllowOrigin::list(origins))
 }
 
 // Type alias to avoid repeating the Option<MetricsHandle> type.

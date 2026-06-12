@@ -25,6 +25,9 @@ impl AppState {
         let visitors = Arc::new(VisitorMap::new(Arc::clone(&config)));
         let http = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(10))
+            // Do not follow redirects: a public webpush endpoint could otherwise
+            // 302 the server to an internal URL, bypassing the SSRF hostname filter.
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .expect("failed to build HTTP client");
         AppState {
@@ -44,6 +47,9 @@ impl AppState {
         let visitors = Arc::new(VisitorMap::new(Arc::clone(&config)));
         let http = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(10))
+            // Do not follow redirects: a public webpush endpoint could otherwise
+            // 302 the server to an internal URL, bypassing the SSRF hostname filter.
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .expect("failed to build HTTP client");
         AppState {
@@ -62,6 +68,9 @@ impl AppState {
         let visitors = Arc::new(VisitorMap::new(Arc::clone(&config)));
         let http = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(10))
+            // Do not follow redirects: a public webpush endpoint could otherwise
+            // 302 the server to an internal URL, bypassing the SSRF hostname filter.
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .expect("failed to build HTTP client");
         AppState {
@@ -80,6 +89,9 @@ impl AppState {
         let visitors = Arc::new(VisitorMap::new(Arc::clone(&config)));
         let http = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(10))
+            // Do not follow redirects: a public webpush endpoint could otherwise
+            // 302 the server to an internal URL, bypassing the SSRF hostname filter.
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .expect("failed to build HTTP client");
         AppState {

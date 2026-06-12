@@ -27,8 +27,9 @@ use axum::{
     middleware::Next,
     response::Response,
 };
+use axum::extract::ConnectInfo;
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
-use std::{net::IpAddr, sync::Arc};
+use std::{net::{IpAddr, SocketAddr}, sync::Arc};
 
 // ── domain types ──────────────────────────────────────────────────────────────
 
@@ -124,7 +125,7 @@ pub fn make_auth_layer(db: DbPool, config: Arc<Config>) -> impl tower::Layer<
         async move {
             // Extract everything we need from req before any await point
             // so the &Request borrow doesn't cross an await boundary.
-            let ip = extract_ip(&req);
+            let ip = extract_ip(&req, config.behind_proxy);
             let auth_header = read_auth_header(&req);
             let auth_user = resolve_auth_parts(&db, &config, auth_header, ip).await;
             req.extensions_mut().insert(auth_user);
@@ -146,7 +147,8 @@ pub fn make_auth_layer(_db: DbPool, _config: Arc<()>) -> impl tower::Layer<
 > + Clone + 'static {
     axum::middleware::from_fn(move |mut req: Request, next: Next| {
         async move {
-            let ip = extract_ip(&req);
+            // No config available in the no-auth layer; never trust XFF here.
+            let ip = extract_ip(&req, false);
             req.extensions_mut().insert(AuthUser::anonymous(ip));
             next.run(req).await
         }
@@ -212,6 +214,12 @@ async fn authenticate(db: &DbPool, header: &str) -> Result<User, AppError> {
     Err(AppError::Unauthorized)
 }
 
+/// A syntactically valid bcrypt hash used to spend the same CPU time on a
+/// missing-user login as on a real one, so response timing can't be used to
+/// enumerate valid usernames. It never matches any password.
+#[cfg(feature = "auth")]
+const DUMMY_BCRYPT_HASH: &str = "$2b$12$GhvMmNVjRW29ulnudl.LbuAnUtN/LRfe1JsBm1Xu6LE3059z5Tr8m";
+
 #[cfg(feature = "auth")]
 fn authenticate_basic(db: &DbPool, header: &str) -> Result<User, AppError> {
     // Decode "Basic <base64(user:pass)>"
@@ -232,9 +240,15 @@ fn authenticate_basic(db: &DbPool, header: &str) -> Result<User, AppError> {
     }
 
     let conn = db.get().map_err(|_| AppError::Unauthorized)?;
-    let user = db_users::user_by_name(&conn, username)
-        .map_err(|_| AppError::Unauthorized)?
-        .ok_or(AppError::Unauthorized)?;
+    let user = match db_users::user_by_name(&conn, username).map_err(|_| AppError::Unauthorized)? {
+        Some(u) => u,
+        None => {
+            // Spend equivalent bcrypt time so a missing user is indistinguishable
+            // from a wrong password by response latency.
+            let _ = tokio::task::block_in_place(|| bcrypt::verify(password, DUMMY_BCRYPT_HASH));
+            return Err(AppError::Unauthorized);
+        }
+    };
 
     // bcrypt verify is CPU-bound; run it on a blocking thread.
     let hash = user.hash.clone();
@@ -312,19 +326,27 @@ pub fn authorize(
 
 // ── IP extraction ─────────────────────────────────────────────────────────────
 
-fn extract_ip(req: &Request) -> IpAddr {
-    // Try X-Forwarded-For first (set by reverse proxies).
-    if let Some(xff) = req.headers().get("x-forwarded-for") {
-        if let Ok(s) = xff.to_str() {
-            if let Some(first) = s.split(',').next() {
-                if let Ok(ip) = first.trim().parse() {
-                    return ip;
+fn extract_ip(req: &Request, behind_proxy: bool) -> IpAddr {
+    // Only trust X-Forwarded-For when explicitly configured to sit behind a
+    // trusted reverse proxy. Otherwise any client can spoof the header and get
+    // a fresh rate-limit bucket per request, bypassing rate limiting entirely.
+    if behind_proxy {
+        if let Some(xff) = req.headers().get("x-forwarded-for") {
+            if let Ok(s) = xff.to_str() {
+                if let Some(first) = s.split(',').next() {
+                    if let Ok(ip) = first.trim().parse() {
+                        return ip;
+                    }
                 }
             }
         }
     }
-    // Fall back to a placeholder; real peer addr requires ConnectInfo extractor
-    // which is wired in Phase 7 (TLS / production hardening).
+    // Use the real peer address from the ConnectInfo extractor (wired in lib.rs
+    // via into_make_service_with_connect_info).
+    if let Some(ConnectInfo(addr)) = req.extensions().get::<ConnectInfo<SocketAddr>>() {
+        return addr.ip();
+    }
+    // Last resort (e.g. Unix socket, no peer address): a fixed placeholder.
     "127.0.0.1".parse().unwrap()
 }
 

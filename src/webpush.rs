@@ -121,10 +121,16 @@ pub async fn send_notifications(
         match send_one(http, vapid, sub, &payload).await {
             Ok(()) => {}
             Err(e) => {
+                // Log only the host, not the full endpoint URL: push endpoints
+                // embed a per-subscription credential in the path/query.
+                let endpoint_host = reqwest::Url::parse(&sub.endpoint)
+                    .ok()
+                    .and_then(|u| u.host_str().map(str::to_string))
+                    .unwrap_or_default();
                 tracing::warn!(
-                    sub_id  = %sub.id,
-                    endpoint = %sub.endpoint,
-                    error    = %e,
+                    sub_id        = %sub.id,
+                    endpoint_host = %endpoint_host,
+                    error         = %e,
                     "web push failed"
                 );
             }

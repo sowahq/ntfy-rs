@@ -29,7 +29,9 @@ jobs:
         uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Run tests with coverage
-        run: cargo llvm-cov --codecov --output-path codecov.json
+        # --all-features so the opt-in code (email / metrics / unix-socket) that
+        # is no longer in the default feature set still gets compiled and tested.
+        run: cargo llvm-cov --all-features --codecov --output-path codecov.json
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5

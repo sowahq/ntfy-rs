@@ -1,13 +1,12 @@
-use once_cell::sync::Lazy;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
 /// Map of emoji shortcode → unicode character, embedded at compile time.
 /// Source: https://github.com/binwiederhier/ntfy/blob/main/server/mailer_emoji_map.json
 static EMOJI_MAP_STR: &str = include_str!("emoji_map.json");
 
-static EMOJI_MAP: Lazy<HashMap<String, String>> = Lazy::new(|| {
-    let map: HashMap<String, String> = serde_json::from_str(EMOJI_MAP_STR).unwrap_or_default();
-    map
+static EMOJI_MAP: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
+    serde_json::from_str(EMOJI_MAP_STR).unwrap_or_default()
 });
 
 /// Replace emoji shortcodes in tags with their unicode equivalents.

@@ -1,0 +1,25 @@
+services:
+  ntfy-rs:
+    image: ghcr.io/szerookii/ntfy-rs:latest
+    container_name: ntfy-rs
+    restart: unless-stopped
+
+    user: "1000:1000"
+
+    ports:
+      - "2586:2586"
+
+    volumes:
+      - ./data:/data
+      - ./server.toml:/data/server.toml:ro
+
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.50"
+
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true

@@ -1,0 +1,8 @@
+listen-http = ":2586"
+base-url    = "https://ntfy.example.com"
+behind-proxy = true
+worker-threads = 2
+cache-file           = "/data/cache.db"
+attachment-cache-dir = "/data/attachments"
+auth-file      = "/data/auth.db"
+default-access = "deny-all"

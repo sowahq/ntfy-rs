@@ -21,6 +21,20 @@ pub use config::{Config, FileConfig, ServeArgs};
 use state::AppState;
 use std::net::SocketAddr;
 
+/// Build a tokio multi-threaded runtime sized for the host.
+///
+/// `worker_threads == 0` uses tokio's default (one per CPU core); any other
+/// value caps the worker pool, which keeps thread count and memory low on
+/// constrained machines. The blocking pool is capped tightly because the only
+/// blocking work is occasional bcrypt hashing.
+pub fn build_runtime(worker_threads: usize) -> std::io::Result<tokio::runtime::Runtime> {
+    let mut builder = tokio::runtime::Builder::new_multi_thread();
+    if worker_threads > 0 {
+        builder.worker_threads(worker_threads);
+    }
+    builder.max_blocking_threads(4).enable_all().build()
+}
+
 /// Handle to a running ntfy-rs server. Call `shutdown()` to stop it.
 pub struct ServerHandle {
     shutdown_tx: tokio::sync::oneshot::Sender<()>,
@@ -116,10 +130,11 @@ pub fn start(config: Config) -> anyhow::Result<ServerHandle> {
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
     let (started_tx, started_rx) = std::sync::mpsc::channel::<anyhow::Result<u16>>();
 
+    let worker_threads = config.worker_threads;
     std::thread::Builder::new()
         .name("ntfy-rs-server".to_string())
         .spawn(move || {
-            let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
+            let rt = build_runtime(worker_threads).expect("failed to create tokio runtime");
             rt.block_on(async move {
                 if let Err(e) = run_server(config, shutdown_rx, started_tx).await {
                     tracing::error!(error = %e, "ntfy-rs server error");
@@ -243,6 +258,15 @@ async fn run_server(
 
     // ── HTTP listener ─────────────────────────────────────────────────────
     let http_addr: SocketAddr = normalise_addr(&config.listen_http)?;
+    #[cfg(feature = "auth")]
+    if !config.auth_enabled && !http_addr.ip().is_loopback() {
+        tracing::warn!(
+            addr = %http_addr,
+            "auth is DISABLED and the server is bound to a non-loopback address — \
+             anyone who can reach it can read and publish to every topic. \
+             Set `auth_file` to enable authentication, or bind to 127.0.0.1."
+        );
+    }
     let http_listener = tokio::net::TcpListener::bind(http_addr).await;
     match http_listener {
         Ok(listener) => {
@@ -278,8 +302,11 @@ async fn run_select(
             Some((tls_addr, tls_cfg))
         }
         (Some(_), _, _) => {
-            tracing::warn!("listen_https set but cert_file/key_file missing — TLS disabled");
-            None
+            // Refuse to start rather than silently downgrading to plaintext:
+            // an operator who asked for HTTPS must not be left serving HTTP only.
+            return Err(anyhow::anyhow!(
+                "listen_https is set but cert_file/key_file is missing — refusing to start without TLS"
+            ));
         }
         _ => None,
     };
@@ -289,7 +316,10 @@ async fn run_select(
     let unix_path = config.listen_unix.clone();
 
     tokio::select! {
-        res = axum::serve(http_listener, app.clone())
+        res = axum::serve(
+                http_listener,
+                app.clone().into_make_service_with_connect_info::<SocketAddr>(),
+            )
             .with_graceful_shutdown(async {
                 let _ = shutdown_rx.await;
             }) => {
@@ -299,7 +329,7 @@ async fn run_select(
             #[cfg(feature = "tls")]
             if let Some((tls_addr, tls_cfg)) = tls_server {
                 axum_server::bind_rustls(tls_addr, tls_cfg)
-                    .serve(app.clone().into_make_service())
+                    .serve(app.clone().into_make_service_with_connect_info::<SocketAddr>())
                     .await
             } else {
                 std::future::pending::<Result<(), std::io::Error>>().await
